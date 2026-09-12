@@ -1,0 +1,29 @@
+{
+  "name": "mutinai",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "dev": "npm run dev -w @mutinai/web",
+    "build": "npm run build -w @mutinai/web",
+    "start": "npm run start -w @mutinai/web",
+    "worker": "npm run start -w @mutinai/worker --",
+    "db:up": "scripts/db-local.sh start",
+    "db:down": "scripts/db-local.sh stop",
+    "db:generate": "npm run generate -w @mutinai/db",
+    "db:migrate": "npm run migrate -w @mutinai/db",
+    "db:seed": "npm run seed -w @mutinai/db",
+    "db:reset": "npm run reset -w @mutinai/db",
+    "setup": "npm run db:up && npm run db:migrate && npm run db:seed",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "tsx": "^4.23.13",
+    "typescript": "5.9.3",
+    "vitest": "^5.0.0"
+  }
+}
