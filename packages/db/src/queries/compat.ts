@@ -183,7 +183,7 @@ export async function loadCompatCatalog(db: Executor) {
   const runtimes = await rows<RuntimeSpec & { slug: string }>(db, sql`
     select rt.project_id as id, pe.slug, pe.name, rt.formats::text[] as formats, rt.backends::text[] as backends,
       rt.supports_offload as "supportsOffload", rt.supports_multi_gpu as "supportsMultiGpu"
-    from ecosystem.runtime rt join ecosystem.entity pe on pe.id = rt.project_id order by pe.name`);
+    from ecosystem.runtime rt join ecosystem.entity pe on pe.id = rt.project_id order by lower(pe.name)`);
 
   const measurements = await loadMeasurements(db);
   return { artifacts, runtimes, measurements };

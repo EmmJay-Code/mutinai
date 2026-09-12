@@ -65,3 +65,26 @@ See [ADR-0002](./adr/0002-ontology.md) for the ontology and
   topology, artifact size, KV-cache estimates, runtime/backend support and
   measured community/canonical results. Measured values and estimates are always
   distinguished. See [ADR-0006](./adr/0006-compatibility-engine.md).
+
+## Decisions before connecting real sources
+
+1. **Source authority and licensing.** Per-source terms of use, attribution requirements, rate limits and
+   whether raw payloads may be retained (and for how long) in the object store.
+2. **Source priorities per field.** `ingest.source.priority` is per source today; real data will likely need
+   per-field authority (e.g. Hugging Face authoritative for file sizes, the developer's model card for
+   architecture, GitHub for repository metadata).
+3. **Editorial workflow for unresolved records.** New first-party models need architecture data and new
+   projects need categorisation. Decide who reviews `unresolved` source records and build that queue UI.
+4. **Identity resolution policy.** When fuzzy matches (not just identifiers/exact aliases) are acceptable, and
+   how merges/splits of mistaken entities are recorded without losing provenance.
+5. **Canonical benchmark policy.** Which leaderboards/sources are trusted for capability results, how
+   evaluation settings are normalized, and how conflicting reports are displayed.
+6. **Community verification rules.** What makes a submission "verified" (moderator review, reproduction by
+   another member, statistical agreement) and how verified runs weight into measured speeds.
+7. **Scheduling and freshness.** Polling vs. webhooks per source, cursor storage, and retention/pruning of
+   snapshots and completed jobs.
+8. **Production identity.** Auth provider(s), whether email is collected at all, and the restricted database
+   role for the public read path.
+9. **AI enrichment boundary.** Model/provider choice, cost limits, and review requirements before any
+   `derived_content` is displayed — always labelled and never overwriting canonical fields.
+10. **Deployment target.** Managed Postgres, S3-compatible object store implementation, and a worker host.
