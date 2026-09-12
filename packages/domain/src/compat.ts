@@ -309,3 +309,32 @@ export function hardwareSummary(hw: HardwareSpec) {
   const backends = [...new Set(hw.components.flatMap((c) => c.device.backends))];
   return { dedicatedGb, unifiedGb: hw.unifiedMemoryGb, systemRamGb: hw.systemRamGb, backends };
 }
+
+export interface Candidate<T> {
+  payload: T;
+  bitsPerWeight: number;
+  result: CompatResult;
+}
+
+/** Above ~8.5 bits per weight, quality gains are negligible for inference; prefer speed instead. */
+export const QUALITY_BPW_CEILING = 8.5;
+
+/**
+ * Chooses the artifact to recommend for one variant on one hardware configuration:
+ * among artifacts that fit in accelerator (or CPU) memory, prefer higher effective precision, then roomier fit, then speed.
+ * Only if nothing fits without offload, prefer the fastest offloaded option.
+ */
+export function pickRecommended<T>(candidates: readonly Candidate<T>[]): Candidate<T> | null {
+  const viable = candidates.filter((c) => c.result.fit !== 'none');
+  if (!viable.length) return null;
+  const inMemory = viable.filter((c) => c.result.fit === 'full' || c.result.fit === 'tight');
+  if (inMemory.length) {
+    return [...inMemory].sort(
+      (a, b) =>
+        Math.min(b.bitsPerWeight, QUALITY_BPW_CEILING) - Math.min(a.bitsPerWeight, QUALITY_BPW_CEILING) ||
+        FIT_RANK[b.result.fit] - FIT_RANK[a.result.fit] ||
+        speedValue(b.result.speed) - speedValue(a.result.speed),
+    )[0]!;
+  }
+  return [...viable].sort((a, b) => speedValue(b.result.speed) - speedValue(a.result.speed) || b.bitsPerWeight - a.bitsPerWeight)[0]!;
+}

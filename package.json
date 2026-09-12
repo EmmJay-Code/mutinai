@@ -2,8 +2,13 @@
   "name": "mutinai",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*"],
-  "engines": { "node": ">=22.12" },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "npm run dev -w @mutinai/web",
     "build": "npm run build -w @mutinai/web",
@@ -18,7 +23,9 @@
     "setup": "npm run db:up && npm run db:migrate && npm run db:seed",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ingest": "npm run start -w @mutinai/worker -- ingest all",
+    "jobs": "npm run start -w @mutinai/worker -- work --once"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",

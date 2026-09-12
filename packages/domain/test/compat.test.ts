@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluate, evaluateAcrossRuntimes, kvCacheGb, weightsGb, type ArtifactSpec, type DeviceSpec, type HardwareSpec, type RuntimeSpec } from '../src/compat';
+import { evaluate, evaluateAcrossRuntimes, kvCacheGb, pickRecommended, weightsGb, type ArtifactSpec, type DeviceSpec, type HardwareSpec, type RuntimeSpec } from '../src/compat';
 
 const rtx4090: DeviceSpec = { id: 'rtx4090', name: 'RTX 4090', kind: 'gpu', memoryKind: 'dedicated', memoryGb: 24, memoryBandwidthGbps: 1008, backends: ['cuda', 'vulkan'] };
 const rtx3090: DeviceSpec = { id: 'rtx3090', name: 'RTX 3090', kind: 'gpu', memoryKind: 'dedicated', memoryGb: 24, memoryBandwidthGbps: 936, backends: ['cuda', 'vulkan'] };
@@ -152,5 +152,33 @@ describe('evaluateAcrossRuntimes', () => {
     const results = evaluateAcrossRuntimes(single4090, gguf('l8', llama8b, 4.89), [mlxLm, vllm, llamaCpp], { contextLength: 4096 });
     expect(results[0]!.runtimeId).toBe('llama.cpp');
     expect(results.slice(1).every((r) => r.fit === 'none')).toBe(true);
+  });
+});
+
+describe('pickRecommended', () => {
+  const candidates = (hw: HardwareSpec, arts: ArtifactSpec[]) =>
+    arts.map((a) => ({ payload: a.id, bitsPerWeight: a.bitsPerWeight, result: evaluateAcrossRuntimes(hw, a, [llamaCpp], { contextLength: 4096 })[0]! }));
+
+  it('prefers the highest useful precision that fits, not bf16 when Q8 fits', () => {
+    const arts = [gguf('bf16', llama8b, 16), gguf('q8', llama8b, 8.5), gguf('q4', llama8b, 4.89)];
+    expect(pickRecommended(candidates(single4090, arts))!.payload).toBe('q8');
+  });
+
+  it('drops to a smaller quant to stay in accelerator memory rather than offloading', () => {
+    const arts = [gguf('q8', llama70b, 8.5), gguf('q4', llama70b, 4.89), gguf('q3', llama70b, 3.91)];
+    const pick = pickRecommended(candidates(dual3090, arts))!;
+    expect(pick.payload).toBe('q4');
+    expect(['full', 'tight']).toContain(pick.result.fit);
+  });
+
+  it('falls back to the fastest offload option when nothing fits', () => {
+    const arts = [gguf('q8', llama70b, 8.5), gguf('q4', llama70b, 4.89)];
+    const pick = pickRecommended(candidates(single4090, arts))!;
+    expect(pick.result.fit).toBe('offload');
+    expect(pick.payload).toBe('q4');
+  });
+
+  it('returns null when nothing runs', () => {
+    expect(pickRecommended(candidates(mbp64, [gguf('f16', llama70b, 16)]))).toBeNull();
   });
 });

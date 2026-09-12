@@ -1,0 +1,32 @@
+{
+  "feed": { "title": "Open model release notes (fixture)", "link": "https://example.org/feed.xml" },
+  "items": [
+    {
+      "guid": "https://example.org/posts/qwen3-gguf-official",
+      "title": "Official Qwen3 GGUF quantizations published",
+      "link": "https://example.org/posts/qwen3-gguf-official",
+      "pubDate": "Tue, 20 May 2025 09:00:00 GMT",
+      "description": "The Qwen team published first-party GGUF files for Qwen3 models.",
+      "categories": ["Qwen3", "llama.cpp"],
+      "kind": "announcement"
+    },
+    {
+      "guid": "https://example.org/posts/hermes-3",
+      "title": "Hermes 3 fine-tunes of Llama 3.1 released",
+      "link": "https://example.org/posts/hermes-3",
+      "pubDate": "Thu, 15 Aug 2024 12:00:00 GMT",
+      "description": "Nous Research released Hermes 3 with improved function calling.",
+      "categories": ["Llama 3.1", "NousResearch/Hermes-3-Llama-3.1-8B"],
+      "kind": "model_release"
+    },
+    {
+      "guid": "https://example.org/posts/community-meetup",
+      "title": "Local inference community meetup notes",
+      "link": "https://example.org/posts/community-meetup",
+      "pubDate": "Fri, 02 May 2025 17:00:00 GMT",
+      "description": "Notes from a community meetup.",
+      "categories": ["Meetups"],
+      "kind": "announcement"
+    }
+  ]
+}

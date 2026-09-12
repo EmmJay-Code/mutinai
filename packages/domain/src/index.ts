@@ -11,6 +11,7 @@ export type {
   Measurement,
   ModelSpec,
   Placement,
+  Candidate,
   RuntimeSpec,
   SpeedAssessment,
 } from './compat';

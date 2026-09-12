@@ -65,6 +65,9 @@ export async function seedCatalog(db: Executor): Promise<Registry> {
     await db.insert(s.organization).values({ id, orgKind: o.orgKind, websiteUrl: o.websiteUrl, country: o.country });
     reg.set('organization', o.slug, id);
   }
+  for (const [namespace, value, slug] of catalog.organizationIdentifiers) {
+    await linkExternalId(db, { namespace, value, entityId: reg.get('organization', slug), url: namespace === 'huggingface-org' ? `https://huggingface.co/${value}` : `https://github.com/${value}` });
+  }
 
   for (const f of catalog.families) {
     const id = await createEntity(db, { kind: 'model_family', slug: f.slug, name: f.name, summary: f.summary });

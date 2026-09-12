@@ -56,6 +56,14 @@ export const organizations: OrgSeed[] = [
   { slug: 'aider-chat', name: 'Aider', orgKind: 'community', websiteUrl: 'https://aider.chat', summary: 'Maintainers of the Aider terminal coding assistant.' },
 ];
 
+/** Organization identities in external namespaces: [namespace, value, organization slug]. */
+export const organizationIdentifiers: [string, string, string][] = [
+  ['huggingface-org', 'meta-llama', 'meta'], ['huggingface-org', 'Qwen', 'qwen'], ['huggingface-org', 'mistralai', 'mistral-ai'],
+  ['huggingface-org', 'google', 'google'], ['huggingface-org', 'deepseek-ai', 'deepseek'], ['huggingface-org', 'microsoft', 'microsoft'],
+  ['huggingface-org', 'unsloth', 'unsloth'], ['huggingface-org', 'lmstudio-community', 'lmstudio-community'], ['huggingface-org', 'mlx-community', 'mlx-community'],
+  ['github-org', 'ggml-org', 'ggml-org'], ['github-org', 'ollama', 'ollama'], ['github-org', 'vllm-project', 'vllm-project'],
+];
+
 interface FamilySeed { slug: string; name: string; developer: string; parent?: string; summary: string }
 export const families: FamilySeed[] = [
   { slug: 'llama', name: 'Llama', developer: 'meta', summary: 'Meta\'s open-weight LLM lineage.' },

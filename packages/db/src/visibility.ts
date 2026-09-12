@@ -3,13 +3,13 @@
  * Tested against the same matrix as the domain policy (packages/db/test/visibility.test.ts).
  */
 import { isModerator, type AccessMode, type Viewer } from '@mutinai/domain';
-import { and, eq, inArray, ne, or, sql, type SQL } from 'drizzle-orm';
-import type { AnyPgColumn } from 'drizzle-orm/pg-core';
+import { and, eq, inArray, ne, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 
+/** Columns may be Drizzle columns or raw SQL references (e.g. sql`r.visibility` when the table is aliased). */
 export interface GovernedColumns {
-  visibility: AnyPgColumn;
-  status: AnyPgColumn;
-  owner: AnyPgColumn;
+  visibility: SQLWrapper;
+  status: SQLWrapper;
+  owner: SQLWrapper;
 }
 
 export function visibleTo(viewer: Viewer, cols: GovernedColumns, mode: AccessMode = 'listing'): SQL {

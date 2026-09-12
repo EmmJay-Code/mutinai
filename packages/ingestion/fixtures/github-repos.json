@@ -1,0 +1,42 @@
+[
+  {
+    "full_name": "ggml-org/llama.cpp",
+    "html_url": "https://github.com/ggml-org/llama.cpp",
+    "description": "LLM inference in C/C++",
+    "homepage": "",
+    "language": "C++",
+    "license": { "spdx_id": "MIT" },
+    "pushed_at": "2025-05-20T10:00:00Z",
+    "latest_release": { "tag_name": "b5450", "name": "b5450", "published_at": "2025-05-20T09:40:00Z", "html_url": "https://github.com/ggml-org/llama.cpp/releases/tag/b5450", "body": "Automated build release." }
+  },
+  {
+    "full_name": "ollama/ollama",
+    "html_url": "https://github.com/ollama/ollama",
+    "description": "Get up and running with large language models locally.",
+    "homepage": "https://ollama.com",
+    "language": "Go",
+    "license": { "spdx_id": "MIT" },
+    "pushed_at": "2025-05-19T18:00:00Z",
+    "latest_release": { "tag_name": "v0.7.0", "name": "v0.7.0", "published_at": "2025-05-13T00:00:00Z", "html_url": "https://github.com/ollama/ollama/releases/tag/v0.7.0", "body": "New multimodal engine.\n\nDetails…" }
+  },
+  {
+    "full_name": "vllm-project/vllm",
+    "html_url": "https://github.com/vllm-project/vllm",
+    "description": "A high-throughput and memory-efficient inference and serving engine for LLMs",
+    "homepage": "https://docs.vllm.ai",
+    "language": "Python",
+    "license": { "spdx_id": "Apache-2.0" },
+    "pushed_at": "2025-05-20T12:00:00Z",
+    "latest_release": null
+  },
+  {
+    "full_name": "someone/new-inference-engine",
+    "html_url": "https://github.com/someone/new-inference-engine",
+    "description": "Yet another inference engine",
+    "homepage": null,
+    "language": "Rust",
+    "license": null,
+    "pushed_at": "2025-05-01T00:00:00Z",
+    "latest_release": null
+  }
+]
