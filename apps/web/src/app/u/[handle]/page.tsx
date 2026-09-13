@@ -1,7 +1,7 @@
 import { community, getDb } from '@mutinai/db';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { ReviewList, SubmissionTable } from '@/components/results';
+import { ReviewList, SubmissionList } from '@/components/results';
 import { PageHead, Section } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import { getViewer } from '@/lib/session';
@@ -27,7 +27,7 @@ export default async function ProfilePage({ params }: { params: Params }) {
       <PageHead eyebrow="Member" title={profile.displayName} lede={profile.bio ?? undefined}>
         <span className="small muted">@{profile.handle} · joined {formatDate(profile.createdAt)} · {profile.submissionCount} public runs · {profile.reviewCount} public reviews</span>
       </PageHead>
-      <Section title="Benchmark runs"><SubmissionTable submissions={submissions} /></Section>
+      <Section title="Benchmark runs"><SubmissionList submissions={submissions} /></Section>
       <Section title="Reviews"><ReviewList reviews={reviews} showSubject /></Section>
     </>
   );

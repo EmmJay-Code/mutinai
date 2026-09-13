@@ -91,3 +91,44 @@ export function numberParam(sp: Record<string, string | string[] | undefined>, k
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
 }
+
+export function formatMonthYear(value: string | Date | null | undefined): string {
+  if (!value) return '';
+  const d = typeof value === 'string' ? new Date(value.length === 10 ? `${value}T12:00:00Z` : value) : value;
+  return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** “8 billion”, “671 billion” — for plain-language sentences. */
+export function paramsInWords(n: number): string {
+  const b = n / 1e9;
+  return `${b >= 10 ? Math.round(b) : Number(b.toFixed(1))} billion`;
+}
+
+/** One-line explanation of what a variant kind means, for newcomers. */
+export const VARIANT_KIND_EXPLAINER: Record<string, string> = {
+  base: 'Pretrained foundation weights — a starting point for fine-tuning, not for chat.',
+  instruct: 'Tuned to follow instructions and hold a conversation. The usual choice.',
+  reasoning: 'Trained to think step by step before answering; slower, stronger on hard problems.',
+  coder: 'Specialised for writing and editing code.',
+  vision: 'Understands images as well as text.',
+  distill: 'A smaller model trained to imitate a larger one.',
+  fine_tune: 'A community or third-party fine-tune of another variant.',
+  merge: 'Built by merging the weights of several models.',
+};
+
+export const FORM_FACTOR_LABEL: Record<string, string> = {
+  laptop: 'Laptops',
+  desktop: 'Desktops',
+  mini_pc: 'Mini PCs',
+  server: 'Servers',
+};
+
+export const CAPABILITY_LABEL: Record<string, string> = {
+  chat: 'Chat',
+  code: 'Coding',
+  reasoning: 'Reasoning',
+  vision: 'Vision',
+  tool_use: 'Tool use',
+  long_context: 'Long context',
+  multilingual: 'Multilingual',
+};

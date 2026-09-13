@@ -1,57 +1,72 @@
 import { catalog, getDb } from '@mutinai/db';
 import type { Metadata } from 'next';
-import { Empty, EntityLink, KindTag, PageHead } from '@/components/ui';
-import { KIND_LABEL, searchParam } from '@/lib/format';
+import Link from 'next/link';
+import { Empty, EntityLink } from '@/components/ui';
+import { searchParam } from '@/lib/format';
 
 export const metadata: Metadata = { title: 'Search' };
 
 type SP = Promise<Record<string, string | string[] | undefined>>;
 
-const KIND_FILTERS = ['model', 'model_variant', 'model_artifact', 'hardware_device', 'hardware_configuration', 'project', 'organization', 'benchmark'];
+const GROUPS: [string, string][] = [
+  ['model', 'Models'],
+  ['hardware_device', 'Hardware'],
+  ['hardware_configuration', 'Systems'],
+  ['project', 'Tools'],
+  ['model_variant', 'Model variants'],
+  ['model_artifact', 'Downloads'],
+  ['organization', 'Organizations'],
+  ['model_release', 'Releases'],
+  ['model_family', 'Families'],
+  ['benchmark', 'Benchmarks'],
+  ['quantization_scheme', 'Quantization formats'],
+];
 
 export default async function SearchPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const q = searchParam(sp, 'q') ?? '';
   const kind = searchParam(sp, 'kind');
-  const hits = q ? await catalog.searchEntities(getDb(), q, { kinds: kind ? [kind] : undefined, limit: 60 }) : [];
+  const hits = q ? await catalog.searchEntities(getDb(), q, { kinds: kind ? [kind] : undefined, limit: 80 }) : [];
+  const grouped = GROUPS.map(([k, label]) => ({ k, label, items: hits.filter((h) => h.kind === k) })).filter((g) => g.items.length);
+  const href = (k?: string) => `/search?q=${encodeURIComponent(q)}${k ? `&kind=${k}` : ''}`;
 
   return (
     <>
-      <PageHead eyebrow="Search" title={q ? <>Results for “{q}”</> : 'Search the ecosystem'} />
-      <form className="filters" action="/search" role="search">
-        <label className="field" style={{ flex: '1 1 320px' }}>
-          <span>Query</span>
-          <input type="search" name="q" defaultValue={q} placeholder="e.g. qwen coder, 24GB GPU, llama.cpp" autoFocus />
-        </label>
-        <label className="field">
-          <span>Kind</span>
-          <select name="kind" defaultValue={kind ?? ''}>
-            <option value="">Everything</option>
-            {KIND_FILTERS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
-          </select>
-        </label>
-        <button className="btn btn-primary" type="submit">Search</button>
-      </form>
+      <div className="discover-head">
+        <div className="eyebrow">Search</div>
+        <h1>{q ? <>Results for “{q}”</> : 'Search Mutinai'}</h1>
+        <form className="searchbar" action="/search" role="search">
+          {kind && <input type="hidden" name="kind" value={kind} />}
+          <label className="sr-only" htmlFor="search-q">Search</label>
+          <input id="search-q" type="search" name="q" defaultValue={q} placeholder="e.g. qwen coder, 24GB GPU, llama.cpp" autoFocus />
+          <button className="btn btn-primary" type="submit">Search</button>
+        </form>
+        {q && (
+          <div className="chips quick-filters">
+            <Link className="chip" aria-pressed={!kind} href={href()}>Everything</Link>
+            {GROUPS.slice(0, 6).map(([k, label]) => <Link key={k} className="chip" aria-pressed={kind === k} href={href(k)}>{label}</Link>)}
+          </div>
+        )}
+      </div>
 
       {!q ? (
-        <Empty>Search models, variants, quantizations, hardware, systems, tools and organizations. Matches names, aliases, repository ids and related entities.</Empty>
+        <Empty>Search models, hardware, tools, variants, downloads and organizations by name, alias or repository id.</Empty>
       ) : hits.length === 0 ? (
-        <Empty>Nothing matched “{q}”.</Empty>
+        <Empty>Nothing matched “{q}”. Try a shorter name, or browse <Link href="/models">models</Link>, <Link href="/hardware">hardware</Link> or <Link href="/tools">tools</Link>.</Empty>
       ) : (
-        <div className="table-wrap">
-          <table className="data">
-            <thead><tr><th style={{ width: 120 }}>Kind</th><th>Name</th><th>Summary</th></tr></thead>
-            <tbody>
-              {hits.map((h) => (
-                <tr key={`${h.kind}:${h.slug}`}>
-                  <td><KindTag kind={h.kind} /></td>
-                  <td className="primary"><EntityLink entity={h} /></td>
-                  <td className="small muted">{h.summary}</td>
-                </tr>
+        grouped.map((g) => (
+          <section key={g.k} className="section-tight" aria-labelledby={`g-${g.k}`}>
+            <h2 id={`g-${g.k}`} className="subhead">{g.label} <span className="faint">{g.items.length}</span></h2>
+            <ul className="list-plain" style={{ maxWidth: 820 }}>
+              {g.items.map((h) => (
+                <li key={`${h.kind}:${h.slug}`}>
+                  <span style={{ fontSize: 17, fontWeight: 500 }}><EntityLink entity={h} /></span>
+                  {h.summary && <div className="small muted">{h.summary}</div>}
+                </li>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          </section>
+        ))
       )}
     </>
   );

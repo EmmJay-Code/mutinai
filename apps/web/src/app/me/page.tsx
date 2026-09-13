@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createHardwareConfig, deleteMyAccount } from '@/app/actions';
-import { ReviewList, SubmissionTable } from '@/components/results';
+import { ReviewList, SubmissionList } from '@/components/results';
 import { Empty, PageHead, Section, Visibility } from '@/components/ui';
 import { formatGb, searchParam } from '@/lib/format';
 import { getSession } from '@/lib/session';
@@ -94,7 +94,7 @@ export default async function MePage({ searchParams }: { searchParams: SP }) {
           </Section>
 
           <Section title="My benchmark runs" more={<Link href="/contribute/benchmark">Submit a run →</Link>}>
-            <SubmissionTable submissions={submissions} emptyText="You haven't submitted any runs." />
+            <SubmissionList submissions={submissions} emptyText="You haven't submitted any runs." />
           </Section>
 
           <Section title="My reviews">

@@ -248,53 +248,61 @@ export interface RunCompatOptions {
   commercialOnly?: boolean;
 }
 
-export async function runCompatibility(db: Executor, hardware: HardwareSelection, opts: RunCompatOptions): Promise<CompatVariantResult[]> {
-  const { artifacts, runtimes, measurements } = await loadCompatCatalog(db);
-  const usableRuntimes = opts.runtimeSlugs?.length ? runtimes.filter((r) => opts.runtimeSlugs!.includes(r.slug)) : runtimes;
-  const filtered = artifacts.filter(
-    (a) => (!opts.capability || a.capabilities.includes(opts.capability)) && (!opts.commercialOnly || a.commercialUse === 'allowed'),
-  );
+type RuntimeRow = RuntimeSpec & { slug: string };
 
-  const byVariant = new Map<string, CompatArtifactRow[]>();
-  for (const a of filtered) byVariant.set(a.variantId, [...(byVariant.get(a.variantId) ?? []), a]);
-
-  const results: CompatVariantResult[] = [];
-  for (const group of byVariant.values()) {
-    const candidates = group.map((row) => {
-      const spec: ArtifactSpec = {
+/** Evaluates every artifact of one variant on one system and picks the recommendation. */
+function evaluateVariant(spec: HardwareSpec, group: CompatArtifactRow[], runtimes: RuntimeRow[], measurements: Measurement[], contextLength: number): CompatVariantResult {
+  const candidates = group
+    .map((row) => {
+      const artifact: ArtifactSpec = {
         id: row.artifactId,
         format: row.format as ArtifactSpec['format'],
         bitsPerWeight: row.bitsPerWeight,
         sizeBytes: row.sizeBytes,
         model: { paramsTotal: row.paramsTotal, paramsActive: row.paramsActive, layers: row.layers, kvHeads: row.kvHeads, headDim: row.headDim, kvBytesPerTokenOverride: row.kvBytesPerTokenOverride, contextLength: row.contextLength },
       };
-      const best = compat.evaluateAcrossRuntimes(hardware.spec, spec, usableRuntimes, { contextLength: opts.contextLength, measurements })[0];
-      const runtime = usableRuntimes.find((r) => r.id === best?.runtimeId);
+      const best = compat.evaluateAcrossRuntimes(spec, artifact, runtimes, { contextLength, measurements })[0];
+      const runtime = runtimes.find((r) => r.id === best?.runtimeId);
       return { payload: { row, runtime: runtime ? { id: runtime.id, slug: runtime.slug, name: runtime.name } : null }, bitsPerWeight: row.bitsPerWeight, result: best! };
-    }).filter((c) => c.result && c.payload.runtime);
+    })
+    .filter((c) => c.result && c.payload.runtime);
 
-    const pick = compat.pickRecommended(candidates);
-    const first = group[0]!;
-    const toRec = (c: (typeof candidates)[number]): CompatRecommendation => ({ row: c.payload.row, runtime: c.payload.runtime!, result: c.result });
-    results.push({
-      variantSlug: first.variantSlug,
-      variantName: first.variantName,
-      variantKind: first.variantKind,
-      modelSlug: first.modelSlug,
-      modelName: first.modelName,
-      familyName: first.familyName,
-      developerName: first.developerName,
-      architecture: first.architecture,
-      paramsTotal: first.paramsTotal,
-      paramsActive: first.paramsActive,
-      capabilities: first.capabilities,
-      licenseName: first.licenseName,
-      commercialUse: first.commercialUse,
-      recommended: pick ? toRec(pick) : null,
-      alternatives: candidates.filter((c) => c !== pick && c.result.fit !== 'none').sort((a, b) => compat.compareResults(a.result, b.result)).map(toRec),
-      artifactsConsidered: group.length,
-    });
-  }
+  const pick = compat.pickRecommended(candidates);
+  const first = group[0]!;
+  const toRec = (c: (typeof candidates)[number]): CompatRecommendation => ({ row: c.payload.row, runtime: c.payload.runtime!, result: c.result });
+  return {
+    variantSlug: first.variantSlug,
+    variantName: first.variantName,
+    variantKind: first.variantKind,
+    modelSlug: first.modelSlug,
+    modelName: first.modelName,
+    familyName: first.familyName,
+    developerName: first.developerName,
+    architecture: first.architecture,
+    paramsTotal: first.paramsTotal,
+    paramsActive: first.paramsActive,
+    capabilities: first.capabilities,
+    licenseName: first.licenseName,
+    commercialUse: first.commercialUse,
+    recommended: pick ? toRec(pick) : null,
+    alternatives: candidates.filter((c) => c !== pick && c.result.fit !== 'none').sort((a, b) => compat.compareResults(a.result, b.result)).map(toRec),
+    artifactsConsidered: group.length,
+  };
+}
+
+function groupByVariant(rows: CompatArtifactRow[]): CompatArtifactRow[][] {
+  const byVariant = new Map<string, CompatArtifactRow[]>();
+  for (const a of rows) byVariant.set(a.variantId, [...(byVariant.get(a.variantId) ?? []), a]);
+  return [...byVariant.values()];
+}
+
+export async function runCompatibility(db: Executor, hardware: HardwareSelection, opts: RunCompatOptions): Promise<CompatVariantResult[]> {
+  const { artifacts, runtimes, measurements } = await loadCompatCatalog(db);
+  const usableRuntimes = opts.runtimeSlugs?.length ? runtimes.filter((r) => opts.runtimeSlugs!.includes(r.slug)) : runtimes;
+  const filtered = artifacts.filter(
+    (a) => (!opts.capability || a.capabilities.includes(opts.capability)) && (!opts.commercialOnly || a.commercialUse === 'allowed'),
+  );
+  const results = groupByVariant(filtered).map((group) => evaluateVariant(hardware.spec, group, usableRuntimes, measurements, opts.contextLength));
 
   const rank = { full: 0, tight: 1, offload: 2, none: 3 } as const;
   return results.sort(
@@ -302,6 +310,30 @@ export async function runCompatibility(db: Executor, hardware: HardwareSelection
       rank[a.recommended?.result.fit ?? 'none'] - rank[b.recommended?.result.fit ?? 'none'] ||
       b.paramsTotal - a.paramsTotal,
   );
+}
+
+export interface ModelSystemCompat {
+  system: { slug: string; name: string; formFactor: string };
+  best: (CompatRecommendation & { variantSlug: string; variantName: string }) | null;
+}
+
+/** For one model, the best recommendation (across its non-base variants) on every reference system. */
+export async function compatForModelAcrossSystems(db: Executor, modelSlug: string, opts: { contextLength: number }): Promise<ModelSystemCompat[]> {
+  const { artifacts, runtimes, measurements } = await loadCompatCatalog(db);
+  const groups = groupByVariant(artifacts.filter((a) => a.modelSlug === modelSlug));
+  if (!groups.length) return [];
+  const systems = await rows<{ slug: string; name: string; formFactor: string }>(db, sql`
+    select ce.slug, ce.name, hc.form_factor as "formFactor" from ecosystem.hardware_configuration hc join ecosystem.entity ce on ce.id = hc.id order by ce.name`);
+  const out: ModelSystemCompat[] = [];
+  for (const system of systems) {
+    const hardware = await loadReferenceHardware(db, system.slug);
+    if (!hardware) continue;
+    const recs = groups
+      .map((g) => evaluateVariant(hardware.spec, g, runtimes, measurements, opts.contextLength))
+      .flatMap((r) => (r.recommended ? [{ payload: { ...r.recommended, variantSlug: r.variantSlug, variantName: r.variantName }, bitsPerWeight: r.recommended.row.bitsPerWeight, result: r.recommended.result }] : []));
+    out.push({ system, best: compat.pickRecommended(recs)?.payload ?? null });
+  }
+  return out;
 }
 
 export async function listHardwarePickerOptions(db: Executor) {

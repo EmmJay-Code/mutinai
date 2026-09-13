@@ -88,3 +88,40 @@ describe('what can I run', () => {
     expect(coding.some((r) => r.recommended?.row.format === 'safetensors')).toBe(true);
   });
 });
+
+describe('directory support fields', () => {
+  it('estimates minimum memory and filters by what fits', async () => {
+    const all = await catalog.listModels(h.db);
+    const q32 = all.find((m) => m.slug === 'qwen2-5-32b')!;
+    expect(q32.minMemoryGb).toBeGreaterThan(18);
+    expect(q32.minMemoryGb).toBeLessThan(24);
+    const fits = (await catalog.listModels(h.db, { fitsInGb: 24 })).map((m) => m.slug);
+    expect(fits).toContain('qwen2-5-32b');
+    expect(fits).not.toContain('llama-3-3-70b');
+    expect(fits).not.toContain('deepseek-r1-671b');
+  });
+
+  it('counts only public, published community activity', async () => {
+    const all = await catalog.listModels(h.db);
+    const by = (slug: string) => all.find((m) => m.slug === slug)!;
+    expect(by('qwen2-5-coder-32b').reviewCount).toBe(1);
+    expect(by('phi-4-14b').reviewCount).toBe(0); // removed review
+    expect(by('llama-3-3-70b').runCount).toBe(1);
+    expect(by('qwen2-5-14b').runCount).toBe(0); // private + rejected only
+    expect(by('qwen2-5-14b').summary).toBeTruthy();
+    const active = await catalog.listModels(h.db, { sort: 'activity' });
+    expect(active[0]!.reviewCount + active[0]!.runCount).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('model compatibility across reference systems', () => {
+  it('summarises the best option per system', async () => {
+    const rows = await compatQueries.compatForModelAcrossSystems(h.db, 'llama-3-3-70b', { contextLength: 8192 });
+    expect(rows).toHaveLength(13);
+    const by = (slug: string) => rows.find((r) => r.system.slug === slug)!;
+    expect(['full', 'tight']).toContain(by('dual-rtx-3090').best?.result.fit);
+    expect(by('a100-80gb-server').best?.result.fit).toBe('full');
+    expect(by('rtx-4060-ti-16gb-budget').best?.result.fit).toBe('offload');
+    expect(await compatQueries.compatForModelAcrossSystems(h.db, 'no-such-model', { contextLength: 8192 })).toEqual([]);
+  });
+});

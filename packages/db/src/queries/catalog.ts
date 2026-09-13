@@ -2,6 +2,7 @@
  * PUBLIC catalog queries. No viewer parameter, no identity or community-private data.
  * Every query selects explicit columns into DTOs.
  */
+import { compat } from '@mutinai/domain';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Executor } from '../client';
 
@@ -88,12 +89,15 @@ export interface ModelListFilters {
   commercialUse?: 'allowed' | 'restricted';
   minParamsB?: number;
   maxParamsB?: number;
-  sort?: 'released' | 'params_asc' | 'params_desc' | 'name';
+  /** Only models with at least one artifact whose estimated memory at 8K context fits in this many GiB. */
+  fitsInGb?: number;
+  sort?: 'released' | 'params_asc' | 'params_desc' | 'name' | 'activity';
 }
 
 export interface ModelListItemDTO {
   slug: string;
   name: string;
+  summary: string | null;
   architecture: 'dense' | 'moe';
   paramsTotal: number;
   paramsActive: number | null;
@@ -111,7 +115,15 @@ export interface ModelListItemDTO {
   capabilities: string[];
   licenses: { name: string; commercialUse: string }[];
   resultCount: number;
+  /** Public, published community reviews on the model's variants and artifacts. */
+  reviewCount: number;
+  /** Public, published community benchmark runs on the model's artifacts. */
+  runCount: number;
+  /** Estimated memory (GiB) of the smallest artifact at 8K context, using the compatibility engine's formula. */
+  minMemoryGb: number | null;
 }
+
+export const MEMORY_REFERENCE_CONTEXT = 8192;
 
 export async function listModels(db: Executor, f: ModelListFilters = {}): Promise<ModelListItemDTO[]> {
   const where: SQL[] = [];
@@ -132,10 +144,12 @@ export async function listModels(db: Executor, f: ModelListFilters = {}): Promis
     params_asc: sql`m.params_total asc`,
     params_desc: sql`m.params_total desc`,
     name: sql`me.name asc`,
+    activity: sql`r.released_on desc nulls last`,
   }[f.sort ?? 'released'];
 
-  return rows<ModelListItemDTO>(db, sql`
-    select me.slug, me.name, m.architecture, m.params_total::float8 as "paramsTotal", m.params_active::float8 as "paramsActive",
+  const result = await rows<ModelListItemDTO & { layers: number; kvHeads: number; headDim: number; kvBytesPerTokenOverride: number | null }>(db, sql`
+    select me.slug, me.name, coalesce(re.summary, me.summary) as summary, m.architecture,
+      m.layers, m.kv_heads as "kvHeads", m.head_dim as "headDim", m.kv_bytes_per_token_override as "kvBytesPerTokenOverride", m.params_total::float8 as "paramsTotal", m.params_active::float8 as "paramsActive",
       m.context_length as "contextLength", re.name as "releaseName", re.slug as "releaseSlug", r.released_on::text as "releasedOn",
       fe.name as "familyName", fe.slug as "familySlug", oe.name as "developerName", oe.slug as "developerSlug",
       (select count(*)::int from ecosystem.model_variant v where v.model_id = m.id) as "variantCount",
@@ -146,7 +160,14 @@ export async function listModels(db: Executor, f: ModelListFilters = {}): Promis
         from ecosystem.model_variant v join ecosystem.license l on l.id = v.license_id where v.model_id = m.id) as licenses,
       (select count(*)::int from ecosystem.benchmark_result br
         left join ecosystem.model_artifact a on a.id = br.artifact_id
-        join ecosystem.model_variant v on v.id = coalesce(br.variant_id, a.variant_id) where v.model_id = m.id) as "resultCount"
+        join ecosystem.model_variant v on v.id = coalesce(br.variant_id, a.variant_id) where v.model_id = m.id) as "resultCount",
+      (select count(*)::int from community.review rv
+        left join ecosystem.model_artifact a on a.id = rv.entity_id
+        join ecosystem.model_variant v on v.id = coalesce(a.variant_id, rv.entity_id)
+        where v.model_id = m.id and rv.visibility = 'public' and rv.status = 'published') as "reviewCount",
+      (select count(*)::int from community.benchmark_submission bs
+        join ecosystem.model_artifact a on a.id = bs.artifact_id join ecosystem.model_variant v on v.id = a.variant_id
+        where v.model_id = m.id and bs.visibility = 'public' and bs.status = 'published') as "runCount"
     from ecosystem.model m
     join ecosystem.entity me on me.id = m.id
     join ecosystem.model_release r on r.id = m.release_id
@@ -157,6 +178,17 @@ export async function listModels(db: Executor, f: ModelListFilters = {}): Promis
     join ecosystem.entity oe on oe.id = f.developer_org_id
     ${where.length ? sql`where ${sql.join(where, sql` and `)}` : sql``}
     order by ${order}`);
+
+  let models: ModelListItemDTO[] = result.map(({ layers, kvHeads, headDim, kvBytesPerTokenOverride, ...m }) => {
+    if (m.smallestArtifactBytes == null) return { ...m, minMemoryGb: null };
+    const spec = { paramsTotal: m.paramsTotal, paramsActive: m.paramsActive, layers, kvHeads, headDim, kvBytesPerTokenOverride, contextLength: m.contextLength };
+    const weights = compat.weightsGb({ id: m.slug, format: 'gguf', bitsPerWeight: 0, sizeBytes: m.smallestArtifactBytes, model: spec });
+    const total = weights + compat.kvCacheGb(spec, Math.min(MEMORY_REFERENCE_CONTEXT, m.contextLength)) + compat.COMPAT_CONSTANTS.baseOverheadGb + weights * compat.COMPAT_CONSTANTS.overheadPerWeightGb;
+    return { ...m, minMemoryGb: Math.round(total * 10) / 10 };
+  });
+  if (f.fitsInGb != null) models = models.filter((m) => m.minMemoryGb != null && m.minMemoryGb <= f.fitsInGb!);
+  if (f.sort === 'activity') models = [...models].sort((a, b) => b.reviewCount + b.runCount - (a.reviewCount + a.runCount));
+  return models;
 }
 
 export async function listModelFacets(db: Executor) {
