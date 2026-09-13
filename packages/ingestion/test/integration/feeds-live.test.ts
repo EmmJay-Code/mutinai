@@ -35,7 +35,7 @@ describe('live feed ingestion (recorded documents)', () => {
   it('creates linked events from official feeds', async () => {
     const { stats } = await runAdapter({ db: h.db, store }, createFeedAdapter({ client: offlineFeeds(documents()).client, feeds }));
     expect(stats).toMatchObject({ seen: 4, new: 4, failed: 0, eventsCreated: 4 });
-    expect(await eventsFor('github:ollama/ollama:release:')).toEqual([{ title: 'v0.34.0', kind: 'runtime_release', links: ['ollama'], source: 'feeds' }]);
+    expect(await eventsFor('github:ollama/ollama:release:')).toEqual([{ title: 'Ollama v0.34.0', kind: 'runtime_release', links: ['ollama'], source: 'feeds' }]);
     const qwen = await eventsFor('feeds:qwen-blog:');
     expect(qwen).toHaveLength(3);
     expect(qwen[0]).toMatchObject({ title: 'Qwen3Guard: Real-time Safety for Your Token Stream', kind: 'announcement', links: ['qwen'] });
@@ -54,6 +54,6 @@ describe('live feed ingestion (recorded documents)', () => {
     const { client } = offlineGitHub({ repos: { 'ollama/ollama': { repo: recordedGitHub('ollama-repo'), releases: [release] } } });
     const { stats } = await runAdapter({ db: h.db, store }, createGitHubAdapter({ client, repos: ['ollama/ollama'] }));
     expect(stats).toMatchObject({ eventsCreated: 0, eventsUpdated: 0 });
-    expect(await eventsFor('github:ollama/ollama:release:v0.34.0')).toEqual([expect.objectContaining({ title: 'v0.34.0', source: 'feeds', links: ['ollama'] })]);
+    expect(await eventsFor('github:ollama/ollama:release:v0.34.0')).toEqual([expect.objectContaining({ title: 'Ollama v0.34.0', source: 'feeds', links: ['ollama'] })]);
   });
 });

@@ -1,8 +1,9 @@
 {
-  "$comment": "Curated Hugging Face selection for scheduled live ingestion. Authors are the first-party developers of families in the catalog; derivatives are discovered only for variants Mutinai already knows. Edit deliberately: every author adds review work.",
+  "$comment": "Curated Hugging Face selection for scheduled live ingestion. Authors are the first-party developers of families in the catalog; derivatives are discovered only for variants Mutinai already knows. Edit deliberately: every author adds review work. minLikes: community derivatives with fewer Hugging Face likes are not discovered (explicit --repos are unaffected).",
   "authors": ["meta-llama", "Qwen", "mistralai", "google", "deepseek-ai", "microsoft"],
   "derivatives": {
     "relations": ["quantized", "finetune"],
-    "perVariant": 5
+    "perVariant": 5,
+    "minLikes": 5
   }
 }

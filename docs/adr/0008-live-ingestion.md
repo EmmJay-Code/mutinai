@@ -47,10 +47,10 @@ records what live sources required on top of it.
    database. A permanent worker ($7/month) is unnecessary until jobs need low latency.
 
 ## Consequences
-- **Quantization schemes:** the catalog's vocabulary is small, so many real GGUF schemes (Q5_0, IQ4_XS, unsloth
-  `UD-*`) are queued as `unknown_quantization` until an editor adds them.
-- **Review tooling:** it is CLI-only (`review list|show|dismiss|link`). New first-party models still need editorial
-  family/release/model creation, which has no tool yet.
+- **Quantization schemes:** llama.cpp's own GGUF types (Q5_0, IQ4_XS, …) are catalog schemes since ADR-0009; Unsloth
+  `UD-*` mixes are still queued as `unknown_quantization`.
+- **Review tooling:** it is CLI-only (`review list|show|dismiss|link`). New first-party models with complete source
+  evidence are added automatically (ADR-0009); new families and ambiguous models still need editorial creation.
 - **Raw snapshots:** stored in the object store, which is ephemeral on Render. Live snapshots are reproducible only
   while upstream serves them, so an S3-compatible `ObjectStore` is needed before relying on retained raw data.
 - **Deletions:** a repo that disappears raises `source_unavailable` for review; entities are never deleted

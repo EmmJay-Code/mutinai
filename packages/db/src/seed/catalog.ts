@@ -126,13 +126,38 @@ export const schemes = [
   { slug: 'awq-4bit', name: 'AWQ 4-bit', method: 'awq', format: 'safetensors', bitsPerWeight: 4.6, summary: 'Activation-aware 4-bit weight quantization for GPU serving.' },
   { slug: 'q8-0', name: 'Q8_0', method: 'legacy_gguf', format: 'gguf', bitsPerWeight: 8.5, summary: '8-bit GGUF; near-lossless.' },
   { slug: 'q6-k', name: 'Q6_K', method: 'k_quant', format: 'gguf', bitsPerWeight: 6.56, summary: '6-bit k-quant.' },
-  { slug: 'q5-k-m', name: 'Q5_K_M', method: 'k_quant', format: 'gguf', bitsPerWeight: 5.69, summary: '5-bit k-quant, medium.' },
-  { slug: 'q4-k-m', name: 'Q4_K_M', method: 'k_quant', format: 'gguf', bitsPerWeight: 4.89, summary: 'The common default: 4-bit k-quant, medium.' },
-  { slug: 'q3-k-m', name: 'Q3_K_M', method: 'k_quant', format: 'gguf', bitsPerWeight: 3.91, summary: '3-bit k-quant; noticeable quality loss on small models.' },
+  { slug: 'q5-k-m', name: 'Q5_K_M', method: 'k_quant', format: 'gguf', bitsPerWeight: 5.69, summary: '5-bit k-quant, medium.', aliases: ['Q5_K'] },
+  { slug: 'q4-k-m', name: 'Q4_K_M', method: 'k_quant', format: 'gguf', bitsPerWeight: 4.89, summary: 'The common default: 4-bit k-quant, medium.', aliases: ['Q4_K'] },
+  { slug: 'q3-k-m', name: 'Q3_K_M', method: 'k_quant', format: 'gguf', bitsPerWeight: 3.91, summary: '3-bit k-quant; noticeable quality loss on small models.', aliases: ['Q3_K'] },
   { slug: 'iq2-xxs', name: 'IQ2_XXS', method: 'i_quant', format: 'gguf', bitsPerWeight: 2.06, summary: '2-bit importance-matrix quant for very large models.' },
   { slug: 'mlx-4bit', name: 'MLX 4-bit', method: 'mlx', format: 'mlx', bitsPerWeight: 4.5, summary: '4-bit group-quantized weights for MLX on Apple silicon.' },
   { slug: 'mlx-8bit', name: 'MLX 8-bit', method: 'mlx', format: 'mlx', bitsPerWeight: 8.5, summary: '8-bit group-quantized weights for MLX.' },
-] as const satisfies readonly { slug: string; name: string; method: QuantizationMethod; format: WeightFormat; bitsPerWeight: number; summary: string }[];
+  // llama.cpp GGUF types as defined in tools/quantize/quantize.cpp and ggml/src/ggml-common.h. Bits per weight: the
+  // documented figure for i-quants; otherwise the documented Llama-3-8B file size (GiB) over its 8.03B parameters, the
+  // same derivation as Q4_K_M above. Unsloth Dynamic (UD-*) mixes vary per model and are deliberately not listed.
+  { slug: 'q5-k-s', name: 'Q5_K_S', method: 'k_quant', format: 'gguf', bitsPerWeight: 5.57, summary: '5-bit k-quant, small.' },
+  { slug: 'q4-k-s', name: 'Q4_K_S', method: 'k_quant', format: 'gguf', bitsPerWeight: 4.67, summary: '4-bit k-quant, small.' },
+  { slug: 'q3-k-l', name: 'Q3_K_L', method: 'k_quant', format: 'gguf', bitsPerWeight: 4.31, summary: '3-bit k-quant, large.' },
+  { slug: 'q3-k-s', name: 'Q3_K_S', method: 'k_quant', format: 'gguf', bitsPerWeight: 3.65, summary: '3-bit k-quant, small.' },
+  { slug: 'q2-k', name: 'Q2_K', method: 'k_quant', format: 'gguf', bitsPerWeight: 3.17, summary: '2-bit k-quant; large quality loss.' },
+  { slug: 'q5-1', name: 'Q5_1', method: 'legacy_gguf', format: 'gguf', bitsPerWeight: 6.04, summary: 'Legacy 5-bit block quant with an offset per block.' },
+  { slug: 'q5-0', name: 'Q5_0', method: 'legacy_gguf', format: 'gguf', bitsPerWeight: 5.57, summary: 'Legacy 5-bit block quant.' },
+  { slug: 'q4-1', name: 'Q4_1', method: 'legacy_gguf', format: 'gguf', bitsPerWeight: 5.11, summary: 'Legacy 4-bit block quant with an offset per block.' },
+  { slug: 'q4-0', name: 'Q4_0', method: 'legacy_gguf', format: 'gguf', bitsPerWeight: 4.64, summary: 'Legacy 4-bit block quant.' },
+  { slug: 'iq4-nl', name: 'IQ4_NL', method: 'i_quant', format: 'gguf', bitsPerWeight: 4.5, summary: '4.5-bit non-linear quant.' },
+  { slug: 'iq4-xs', name: 'IQ4_XS', method: 'i_quant', format: 'gguf', bitsPerWeight: 4.25, summary: '4.25-bit non-linear quant.' },
+  { slug: 'iq3-m', name: 'IQ3_M', method: 'i_quant', format: 'gguf', bitsPerWeight: 3.66, summary: '3.66-bit importance-matrix quant mix.' },
+  { slug: 'iq3-s', name: 'IQ3_S', method: 'i_quant', format: 'gguf', bitsPerWeight: 3.44, summary: '3.44-bit importance-matrix quant.' },
+  { slug: 'iq3-xs', name: 'IQ3_XS', method: 'i_quant', format: 'gguf', bitsPerWeight: 3.3, summary: '3.3-bit importance-matrix quant.' },
+  { slug: 'iq3-xxs', name: 'IQ3_XXS', method: 'i_quant', format: 'gguf', bitsPerWeight: 3.06, summary: '3.06-bit importance-matrix quant.' },
+  { slug: 'iq2-m', name: 'IQ2_M', method: 'i_quant', format: 'gguf', bitsPerWeight: 2.7, summary: '2.7-bit importance-matrix quant.' },
+  { slug: 'iq2-s', name: 'IQ2_S', method: 'i_quant', format: 'gguf', bitsPerWeight: 2.5, summary: '2.5-bit importance-matrix quant.' },
+  { slug: 'iq2-xs', name: 'IQ2_XS', method: 'i_quant', format: 'gguf', bitsPerWeight: 2.31, summary: '2.31-bit importance-matrix quant.' },
+  { slug: 'iq1-m', name: 'IQ1_M', method: 'i_quant', format: 'gguf', bitsPerWeight: 1.75, summary: '1.75-bit importance-matrix quant for very large models.' },
+  { slug: 'iq1-s', name: 'IQ1_S', method: 'i_quant', format: 'gguf', bitsPerWeight: 1.56, summary: '1.56-bit importance-matrix quant for very large models.' },
+  { slug: 'gguf-bf16', name: 'GGUF BF16', method: 'native', format: 'gguf', bitsPerWeight: 16, summary: 'Unquantized bfloat16 weights in a GGUF file.' },
+  { slug: 'gguf-f16', name: 'GGUF F16', method: 'native', format: 'gguf', bitsPerWeight: 16, summary: 'Unquantized float16 weights in a GGUF file.' },
+] as const satisfies readonly { slug: string; name: string; method: QuantizationMethod; format: WeightFormat; bitsPerWeight: number; summary: string; aliases?: readonly string[] }[];
 
 /** Artifact publisher defaults per scheme when not first-party. */
 const quantPublisher: Partial<Record<SchemeSlug, string>> = {

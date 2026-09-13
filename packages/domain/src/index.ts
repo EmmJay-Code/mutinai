@@ -6,6 +6,8 @@ export * from './privacy';
 export * from './ratings';
 export * from './profile';
 export * from './discovery';
+export * from './freshness';
+export * from './model-naming';
 export * as compat from './compat';
 export type {
   ArtifactSpec,

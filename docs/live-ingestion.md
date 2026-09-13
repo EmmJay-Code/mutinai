@@ -38,8 +38,57 @@ Options for `ingest <source>`:
 | `--recheck-unresolved` | Re-fetch items whose latest snapshot is still unresolved |
 | `--feeds key,…` | Feeds subset |
 
+Time-sensitive surfaces use event time, never ingest time: see [freshness.md](freshness.md).
+
 Start with `--dry-run` and a handful of repositories. Running any command twice is safe: unchanged snapshots are
 skipped, and unresolved ones are re-evaluated without duplicating anything.
+
+## First-party releases
+
+Root weights (no declared parent) published by a model developer become catalog structure automatically when every
+rule holds. The rules are implemented in `packages/ingestion/src/promotion.ts`; the reasons are in
+[ADR-0009](adr/0009-freshness-and-publisher-accounts.md).
+
+| Rule | Evidence | Failure code |
+|---|---|---|
+| The publisher is a known developer | The `huggingface-org` identifier resolves to an organization that develops at least one family | `publisher_not_known_developer` |
+| The name follows the developer convention | `<name><version>[-<line>]-<size>B[-A<active>B][-<suffix>]`, e.g. `Qwen3.8-27B`, `Qwen3-30B-A3B-Instruct-2507` | `name_not_parsed` |
+| The name belongs to exactly one of that developer's families | Family named by the brand (`Mistral` for `Mistral-Small-4`), or brand plus line (`Qwen Coder`) | `no_matching_family`, `ambiguous_family` |
+| Architecture is stated | config.json (or its `text_config`): layers, attention heads, KV heads, head dim, context length | `architecture_facts_incomplete` |
+| The size is real | Safetensors parameter count within 15% of the size in the name | `parameter_count_missing`, `name_size_mismatch` |
+| Mixture-of-experts models name their active parameters | config.json declares experts, and the name has `A<n>B` (a dense model must not) | `moe_active_params_unknown`, `dense_with_active_params` |
+| Every name token is understood | Kind tokens (`Base`, `Instruct`, `it`, `Thinking`, `Coder`, `VL`, …), date codes (`2507`), versions (`v0.3`) | `unrecognised_name_tokens` |
+| The source dates the publication | Hugging Face repository creation date. Ingest time is never used. | `release_date_unknown` |
+
+- **When every rule holds:** the release is matched by name within the family or created, and so is the model within
+  the release. A release created this way gets a `model_release` event dated by publication. The variant is created
+  when the name states its kind. Otherwise it stays unresolved as `first_party_variant_kind`.
+- **When any rule fails:** nothing is created, and the review item's `suggestion.promotion.failed` lists every unmet rule.
+
+Evidence is stored as an `auto_promotion` field assertion on what was created. The Hugging Face adapter fetches
+`config.json` only for root weights. Repositories with no language-model evidence (no pipeline tag, causal-LM
+architecture or config facts) are recorded as unsupported.
+
+## Publisher accounts
+
+Organizations are either **recognized** (editorial: developers, hardware vendors, project maintainers) or **publisher
+accounts** that ingestion records so every variant and artifact keeps its publisher. Accounts are excluded from
+organization search and developer facets; an editor promotes one by setting `organization.recognized`.
+
+A derivative that repeats its base's repository name under another account is a re-upload (`possible_reupload`) and is
+not created. Derivative discovery skips repositories with fewer than `minLikes` likes (`sources/huggingface.json`).
+
+## Quantization schemes
+
+GGUF schemes follow llama.cpp's definitions (`tools/quantize/quantize.cpp`, `ggml/src/ggml-common.h`):
+
+- **Bits per weight:** the documented figure for i-quants (`IQ4_XS` 4.25, `IQ3_M` 3.66, …). For other types it is the
+  documented Llama-3-8B file size over 8.03B parameters, the same derivation as the original `Q4_K_M`.
+- **Aliases:** `Q3_K`, `Q4_K` and `Q5_K` are llama.cpp aliases for the `_M` mixes.
+- **Full precision:** `GGUF BF16` and `GGUF F16` are distinct from safetensors `BF16`.
+- **Deploys:** `bootstrap` adds schemes missing from an existing database on every deploy.
+- **Unresolved on purpose:** Unsloth Dynamic mixes (`UD-Q4_K_XL`, …), ternary `TQ*`, `MXFP4` and NVFP4. Their bits per
+  weight vary per model or are not modelled.
 
 ## Reviewing what could not be placed
 

@@ -1,6 +1,6 @@
 import { catalog, getDb } from '@mutinai/db';
 import type { Metadata } from 'next';
-import { originOfSourceKind, sourceKindLabel } from '@mutinai/domain';
+import { collapseDuplicates, FRESHNESS, originOfSourceKind, sourceKindLabel } from '@mutinai/domain';
 import { Basis, EntityLink, PageHead } from '@/components/ui';
 import { EntityMark, type EntityType } from '@/components/viz';
 
@@ -10,7 +10,9 @@ import { formatDate, humanize, isoDate } from '@/lib/format';
 export const metadata: Metadata = { title: 'What’s new' };
 
 export default async function WhatsNewPage() {
-  const events = await catalog.listEvents(getDb(), { limit: 200 });
+  // Ordered by when things happened. Future-dated entries are bad data; re-published copies of a release are one event.
+  const latestAllowed = Date.now() + FRESHNESS.futureToleranceHours * 3_600_000;
+  const events = collapseDuplicates((await catalog.listEvents(getDb(), { limit: 300 })).filter((e) => new Date(e.occurredAt).getTime() <= latestAllowed)).slice(0, 200);
   const byYear = events.reduce<Record<string, typeof events>>((acc, e) => {
     const y = String(new Date(e.occurredAt).getUTCFullYear());
     (acc[y] ??= []).push(e);

@@ -168,6 +168,8 @@ main { padding: 16px 0 64px; }
 .now-head { border-top: 0; padding-top: 0; }
 .lead { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, 1fr); gap: 28px; padding: 20px 22px 20px 25px; background: var(--raised); border-radius: var(--radius); box-shadow: inset 3px 0 0 var(--accent); }
 @media (max-width: 760px) { .lead { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 16px 16px 16px 19px; } }
+.lead-quiet { grid-template-columns: minmax(0, 1fr); box-shadow: inset 3px 0 0 var(--line); }
+.lead-quiet .lead-flag { color: var(--faint); }
 .lead-flag { font: 600 11px/1 var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
 .lead h3 { font: 600 clamp(24px, 2.8vw, 34px)/1.08 var(--serif); letter-spacing: -0.022em; margin: 8px 0 10px; }
 .lead p { color: var(--ink-2); font-size: 15px; line-height: 1.5; margin: 0 0 12px; max-width: 60ch; }

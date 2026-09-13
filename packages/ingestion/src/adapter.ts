@@ -68,6 +68,9 @@ export interface ObservedModelFacts {
   headDim?: number;
   contextLength?: number;
   modelType?: string;
+  /** Routed experts per MoE layer; absent or 1 for dense models. */
+  experts?: number;
+  expertsPerToken?: number;
 }
 
 /** A published weight set. Resolved by identifier; new variants require resolvable base variants. */
@@ -129,6 +132,8 @@ export interface EventRecord {
   identifiers?: Identifier[];
   /** Exact entity names/aliases supplied by the source (e.g. feed categories). No free-text extraction. */
   mentions?: string[];
+  /** For runtime releases: the release tag, so the title can name the linked project consistently. */
+  releaseTag?: string;
 }
 
 /**

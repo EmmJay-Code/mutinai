@@ -1,6 +1,7 @@
 import { catalog, community, compatQueries, getDb } from '@mutinai/db';
+import { activityByMonth, FRESHNESS, isFixtureEvent, rankTrending, selectDiscover, TRENDING_METRICS } from '@mutinai/domain';
 import Link from 'next/link';
-import { EntityLink, FitBadge, LicenseShort, Speed } from '@/components/ui';
+import { Basis, EntityLink, FitBadge, LicenseShort, Speed } from '@/components/ui';
 import { Avatar, CapabilityBars, EntityMark, FrontierChart, Heat, MemoryScale, MonthlyBars, SystemsMeter, type EntityType } from '@/components/viz';
 import { entityHref, FORM_FACTOR_LABEL, formatDate, formatNumber, formatParams, humanize, isoDate } from '@/lib/format';
 
@@ -24,14 +25,19 @@ const LEARN_PATHS = [
   { id: 'build', title: 'Build with them', text: 'APIs, coding assistants, agents and fine-tuning.' },
 ];
 
-const monthLong = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+const DAY = 86_400_000;
 const shortDevice = (n: string) => n.replace(/^(NVIDIA|AMD|Apple)\s+(GeForce\s+|Radeon\s+)?/, '');
+/** Day and month; the year too when it is not the current one, so older items never read as this year's. */
+const eventDate = (d: Date | string, now: Date) => (new Date(d).getUTCFullYear() === now.getUTCFullYear() ? formatDate(d).replace(/ \d{4}$/, '') : formatDate(d));
+const TRENDING_UNIT: Record<string, string> = { stars: 'GitHub stars', likes: 'Hugging Face likes' };
 
 export default async function DiscoverPage() {
   const db = getDb();
-  const [events, months, frontier, models, stats, picker, submissions, reviews, profiles, summary, runtimes, devices] = await Promise.all([
-    catalog.listEvents(db, { limit: 12 }),
-    catalog.eventActivityByMonth(db, 12),
+  const now = new Date();
+  const [events, observations, liveStatus, frontier, models, stats, picker, submissions, reviews, profiles, summary, runtimes, devices] = await Promise.all([
+    catalog.listEvents(db, { limit: 1000 }),
+    catalog.listMetricObservations(db, { since: new Date(now.getTime() - (FRESHNESS.trendingDays + FRESHNESS.trendingBaselineMaxDays + 1) * DAY), metrics: TRENDING_METRICS }),
+    catalog.liveSourceStatus(db),
     catalog.benchmarkFrontier(db, 'gpqa-diamond'),
     catalog.listModels(db),
     community.getCommunityStats(db),
@@ -50,20 +56,21 @@ export default async function DiscoverPage() {
     .sort((a, b) => b.paramsTotal - a.paramsTotal)
     .slice(0, 5);
 
-  const latestMonth = months.at(-1);
   const best = frontier?.points.at(-1);
 
   // Reading order: what Mutinai is → the one development that matters → latest + trending → deeper trends → questions.
-  const lead = events.find((e) => e.kind === 'model_release' || e.kind === 'hardware_launch') ?? events[0];
-  const rest = events.filter((e) => e !== lead).slice(0, 8);
+  // Time-sensitive selection follows docs/freshness.md: event time only, fixtures never compete with live data.
+  const { mode, topStory: lead, latest: rest, recentReleaseCount } = selectDiscover(events, now, { latestLimit: 8 });
+  const months = activityByMonth(events, now, 12);
+  const trending = rankTrending(observations, now);
+  const trendingItems = [...trending.filter((t) => t.metric === 'stars').slice(0, 3), ...trending.filter((t) => t.metric === 'likes').slice(0, 2)];
+  const topGain = (metric: string) => Math.max(...trending.filter((t) => t.metric === metric).map((t) => t.gain), 1);
   const leadRelease = lead?.entities.find((e) => e.kind === 'model_release');
   const leadModel = leadRelease
     ? models.filter((m) => m.releaseSlug === leadRelease.slug).sort((a, b) => b.reviewCount + b.runCount - (a.reviewCount + a.runCount) || b.paramsTotal - a.paramsTotal)[0]
     : undefined;
 
   const activeModels = models.filter((m) => m.reviewCount + m.runCount > 0).sort((a, b) => b.reviewCount + b.runCount - (a.reviewCount + a.runCount)).slice(0, 3);
-  const topRuntime = [...runtimes].sort((a, b) => b.resultCount - a.resultCount)[0];
-  const topDevice = devices.filter((d) => d.deviceKind !== 'cpu').sort((a, b) => b.resultCount - a.resultCount)[0];
   const featuredRuns = [submissions.find((s) => s.verification === 'verified'), submissions.find((s) => s.verification !== 'verified')].filter(Boolean);
   const featuredReview = [...reviews].sort((a, b) => b.helpfulScore - a.helpfulScore)[0];
   const order = ['laptop', 'mini_pc', 'desktop', 'server'];
@@ -75,7 +82,7 @@ export default async function DiscoverPage() {
     <>
       <section className="opening" aria-labelledby="hero-title">
         <div>
-          <div className="eyebrow">Open models · right now{latestMonth ? ` · data to ${monthLong(latestMonth.month)}` : ''}</div>
+          <div className="eyebrow">Open models · {mode === 'live' ? (liveStatus.lastCheckedAt ? `sources checked ${formatDate(liveStatus.lastCheckedAt)}` : 'live sources') : 'illustrative fixture data'}</div>
           <h1 id="hero-title">Everything happening in open models.</h1>
           <p className="lede">Open-weight models, the hardware they run on and the tools around them — measured, sourced, and checked against the machine you have.</p>
           <div className="opening-actions">
@@ -85,7 +92,7 @@ export default async function DiscoverPage() {
         </div>
         <dl className="stats" aria-label="The ecosystem at a glance">
           <div><dt>Open-weight models tracked</dt><dd>{models.length}</dd></div>
-          <div><dt>Releases &amp; launches in {latestMonth ? monthLong(latestMonth.month) : 'the latest month'}</dt><dd>{latestMonth?.count ?? 0}</dd></div>
+          <div><dt>Releases &amp; launches in the last {FRESHNESS.recentDays} days</dt><dd>{recentReleaseCount}</dd></div>
           <div><dt>Best open GPQA Diamond score{best ? ` · ${best.name}` : ''}</dt><dd>{best ? best.value.toFixed(1) : '—'}<small>%</small></dd></div>
           <div><dt>Verified community runs</dt><dd>{stats.verified}<small>of {stats.submissions}</small></dd></div>
         </dl>
@@ -96,7 +103,7 @@ export default async function DiscoverPage() {
           <h2 id="now-heading"><span className="glyph g-event" aria-hidden="true" /> Happening now</h2>
           <div className="more"><Link href="/new">Full timeline →</Link></div>
         </div>
-        {lead && (
+        {lead ? (
           <article className="lead" aria-labelledby="lead-title">
             <div>
               <div className="lead-flag">Top story</div>
@@ -125,6 +132,18 @@ export default async function DiscoverPage() {
               </div>
             )}
           </article>
+        ) : (
+          <article className="lead lead-quiet" aria-labelledby="lead-title">
+            <div>
+              <div className="lead-flag">No top story</div>
+              <h3 id="lead-title">Nothing major in the last {FRESHNESS.topStoryDays} days</h3>
+              <p>
+                {mode === 'live'
+                  ? 'A top story needs a model release, a hardware launch or a new runtime version from the past two weeks. The latest tracked events are below.'
+                  : 'Only illustrative fixture data is loaded, so nothing here is current. The latest fixture events are below.'}
+              </p>
+            </div>
+          </article>
         )}
 
         <div className="now-grid">
@@ -135,45 +154,42 @@ export default async function DiscoverPage() {
                 const href = e.entities[0] ? entityHref(e.entities[0]) : null;
                 return (
                   <li key={e.id}>
-                    <time dateTime={isoDate(e.occurredAt)}>{formatDate(e.occurredAt).replace(/ \d{4}$/, '')}</time>
+                    <time dateTime={isoDate(e.occurredAt)}>{eventDate(e.occurredAt, now)}</time>
                     <span className="node"><EntityMark type={EVENT_ENTITY[e.kind] ?? 'event'} label={humanize(e.kind)} /></span>
                     <div>
                       <div className="title">{href ? <Link href={href}>{e.title}</Link> : e.title}</div>
                       {e.entities.some((x) => !e.title.toLowerCase().includes(x.name.toLowerCase())) && <div className="about">{e.entities.filter((x) => !e.title.toLowerCase().includes(x.name.toLowerCase())).map((x) => x.name).join(' · ')}</div>}
                     </div>
-                    <span className="kind">{humanize(e.kind)}</span>
+                    <span className="kind">{humanize(e.kind)}{isFixtureEvent(e) && <> <Basis kind="fixture" title="Illustrative fixture data">Fixture</Basis></>}</span>
                   </li>
                 );
               })}
             </ol>
+            {!rest.length && <p className="small muted">No events tracked yet.</p>}
           </div>
 
           <aside className="rail" aria-label="Trending and community">
             <section className="rail-block" aria-labelledby="active-h">
-              <h3 id="active-h">Trending <span>by community activity</span></h3>
-              <ul className="mini-list">
-                {activeModels.map((m) => (
-                  <li key={m.slug}>
-                    <EntityMark type="model" />
-                    <Link href={`/models/${m.slug}`}>{m.name}<span className="sub">{m.runCount} run{m.runCount === 1 ? '' : 's'} · {m.reviewCount} review{m.reviewCount === 1 ? '' : 's'}</span></Link>
-                    <Heat level={Math.min(3, m.reviewCount + m.runCount)} label={`${m.reviewCount + m.runCount} contributions`} />
-                  </li>
-                ))}
-                {topRuntime && (
-                  <li>
-                    <EntityMark type="tool" />
-                    <Link href={`/tools/${topRuntime.slug}`}>{topRuntime.name}<span className="sub">{topRuntime.resultCount} measurements</span></Link>
-                    <Heat level={3} label="Most measured runtime" />
-                  </li>
-                )}
-                {topDevice && (
-                  <li>
-                    <EntityMark type="hardware" />
-                    <Link href={`/hardware/${topDevice.slug}`}>{shortDevice(topDevice.name)}<span className="sub">{topDevice.resultCount} measurements</span></Link>
-                    <Heat level={2} label="Most measured hardware" />
-                  </li>
-                )}
-              </ul>
+              <h3 id="active-h">Trending <span>growth over {FRESHNESS.trendingDays} days</span></h3>
+              {trendingItems.length ? (
+                <ul className="mini-list">
+                  {trendingItems.map((t) => {
+                    const href = entityHref(t.entity);
+                    const label = <>{t.entity.name}<span className="sub">+{formatNumber(t.gain)} {TRENDING_UNIT[t.metric]} since {formatDate(t.since)}</span></>;
+                    return (
+                      <li key={`${t.entityId}-${t.metric}`}>
+                        <EntityMark type={t.entity.kind === 'project' ? 'tool' : t.entity.kind === 'model' ? 'model' : 'variant'} />
+                        {href ? <Link href={href}>{label}</Link> : <span>{label}</span>}
+                        <Heat level={Math.max(1, Math.round((3 * t.gain) / topGain(t.metric)))} label={`+${t.gain} ${TRENDING_UNIT[t.metric]}`} />
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="small muted" style={{ margin: 0 }}>
+                  {`Not enough history yet. Trending compares GitHub stars and Hugging Face likes a week apart${liveStatus.firstCheckedAt ? `; tracking began ${formatDate(liveStatus.firstCheckedAt)}.` : ', and needs live sources.'}`}
+                </p>
+              )}
             </section>
             <section className="rail-block" aria-labelledby="voices-h">
               <h3 id="voices-h">From the community <span><Link href="/community">all →</Link></span></h3>
@@ -223,7 +239,10 @@ export default async function DiscoverPage() {
           <figure className="trend-panel">
             <figcaption>
               <h3><span className="glyph g-event" aria-hidden="true" /> Releases and launches per month</h3>
-              <p>Model releases, hardware launches, runtime releases and announcements tracked by Mutinai.</p>
+              <p>
+                Model releases, hardware launches and new runtime versions, by the date they happened.
+                {mode === 'live' && liveStatus.firstCheckedAt ? ` Live tracking began ${formatDate(liveStatus.firstCheckedAt)}; earlier months hold only the history sources still list.` : ''}
+              </p>
             </figcaption>
             <MonthlyBars months={months} label="Releases and launches per month" />
           </figure>

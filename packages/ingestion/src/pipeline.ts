@@ -2,7 +2,7 @@
  * Ingestion pipeline: fetch → snapshot → dedupe → normalize → resolve → upsert → provenance → review → emit.
  * Each raw item is processed in its own transaction and is idempotent. See docs/adr/0005 and docs/adr/0008.
  */
-import { slugify, type Capability, type RelationPredicate, type VariantKind } from '@mutinai/domain';
+import { releaseTitle, slugify, type Capability, type RelationPredicate, type VariantKind } from '@mutinai/domain';
 import {
   addAliases,
   createArtifact,
@@ -19,7 +19,7 @@ import {
   type Executor,
 } from '@mutinai/db';
 import type { ReviewCandidate } from '@mutinai/db/schema';
-import { and, eq, notInArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import type {
   ArtifactSetRecord,
   EventRecord,
@@ -37,6 +37,7 @@ import type {
 } from './adapter';
 import { canonicalJson, sha256 } from './hash';
 import { MemoryObjectStore, type ObjectStore } from './object-store';
+import { planFirstPartyRelease } from './promotion';
 
 export interface PipelineDeps {
   db: Database;
@@ -66,16 +67,16 @@ export interface RunStats {
 
 /** Why an item needs an editor. Stable codes: they key review items and appear in tooling. */
 export const REVIEW_REASONS = {
-  new_first_party_model: 'New model with no declared parent weights; needs family/release/model structure',
-  first_party_variant_kind: 'First-party post-trained weights; the variant kind (instruct, reasoning, …) needs confirming',
-  possible_reupload: 'Same name as a known variant from another publisher; likely a re-upload, not a new variant',
+  new_first_party_model: 'New model with no declared parent weights that could not be added automatically; the detail lists the unmet rules',
+  first_party_variant_kind: 'First-party weights whose variant kind (base, instruct, reasoning, …) is not stated; needs confirming',
+  possible_reupload: 'Repeats the name of a known variant or of its declared base under another account; a re-upload, not a new variant',
   unknown_base: 'Declared parent weights are not a known variant',
   base_not_variant: 'Declared parent resolves to something other than a variant',
   merge_across_models: 'Merge of parents from different models',
   unknown_quantization: 'Quantized files with a scheme Mutinai does not know',
   unknown_project: 'Repository is not a known project; needs categorisation',
   unmapped_license: 'License identifier has no Mutinai license record',
-  new_organization: 'Organization created from a source; its kind needs confirming',
+  new_organization: 'Publisher account recorded from a source; not a recognized organization unless an editor promotes it',
   fact_conflict: 'Source-reported fact differs from the canonical value',
   unsupported_repo: 'Published item Mutinai does not model (e.g. a LoRA adapter)',
   source_unavailable: 'Source no longer serves an item that was previously ingested',
@@ -447,6 +448,7 @@ async function findCandidates(tx: Executor, name: string, kinds: string[], limit
 }
 
 const repoName = (id: Identifier) => id.value.split('/').pop() ?? id.value;
+const repoOwner = (id: Identifier) => (id.value.includes('/') ? id.value.split('/')[0]!.toLowerCase() : '');
 
 async function findOrganization(tx: Executor, ref: OrganizationRef): Promise<string | null> {
   if (ref.identifier) {
@@ -462,11 +464,12 @@ async function resolveOrCreateOrganization(ctx: ApplyContext, ref: OrganizationR
     let slug = slugify(ref.name);
     const [clash] = await ctx.tx.select({ id: s.entity.id }).from(s.entity).where(and(eq(s.entity.kind, 'organization'), eq(s.entity.slug, slug)));
     if (clash) slug = `${slug}-${ctx.sourceRecordId.slice(0, 6)}`;
+    // A publisher account, kept for provenance. Not `recognized`: it stays off public organization surfaces.
     orgId = await createEntity(ctx.tx, { kind: 'organization', slug, name: ref.name });
-    await ctx.tx.insert(s.organization).values({ id: orgId, orgKind: 'community' });
+    await ctx.tx.insert(s.organization).values({ id: orgId, orgKind: 'community', recognized: false });
     ctx.stats.entitiesCreated += 1;
     ctx.touched.set(orgId, 'other');
-    raise(ctx, { reason: 'new_organization', subject: ref.name, blocking: false, detail: `created organization ${ref.name} (kind needs editorial review)`, suggestion: { identifier: ref.identifier?.value } });
+    raise(ctx, { reason: 'new_organization', subject: ref.name, blocking: false, detail: `recorded publisher account ${ref.name} (not a recognized organization)`, suggestion: { identifier: ref.identifier?.value } });
   }
   if (ref.identifier) await linkExternalId(ctx.tx, { ...ref.identifier, entityId: orgId, firstSeenRecordId: ctx.sourceRecordId });
   return orgId;
@@ -584,11 +587,20 @@ async function applyVariant(ctx: ApplyContext, r: VariantRecord): Promise<void> 
     if (exact.length) {
       const [pub] = await ctx.tx.select({ publisherOrgId: s.modelVariant.publisherOrgId }).from(s.modelVariant).where(eq(s.modelVariant.id, exact[0]!.entityId));
       if (pub && pub.publisherOrgId !== publisherId) {
-        raise(ctx, { reason: 'possible_reupload', detail: `${r.identifier.value}: same name as known variant ${exact[0]!.slug} from another publisher; not created`, candidates: exact, suggestion });
+        raise(ctx, { reason: 'possible_reupload', blocking: false, detail: `${r.identifier.value}: same name as known variant ${exact[0]!.slug} from another publisher; not created`, candidates: exact, suggestion });
         return;
       }
+      // Same publisher, same name as a known variant under another repo id (e.g. a renamed repo): link it, never duplicate.
+      raise(ctx, { reason: 'new_first_party_model', detail: `${r.identifier.value}: same name as known variant ${exact[0]!.slug} from the same publisher; link it instead of adding a model`, candidates: exact, suggestion });
+      return;
     }
-    raise(ctx, { reason: 'new_first_party_model', detail: `${r.identifier.value}: new first-party model; requires editorial architecture data`, candidates, suggestion });
+    await promoteFirstPartyRoot(ctx, r, candidates, suggestion);
+    return;
+  }
+
+  // A derivative that repeats its base's repository name under another account re-uploads the base; it is not new weights.
+  if (bases.length === 1 && normalizeAlias(repoName(r.identifier)) === normalizeAlias(repoName(bases[0]!)) && repoOwner(r.identifier) !== repoOwner(bases[0]!)) {
+    raise(ctx, { reason: 'possible_reupload', subject: bases[0]!.value, blocking: false, detail: `${r.identifier.value}: repeats the name of its declared base ${bases[0]!.value}; a re-upload, not a new variant`, suggestion });
     return;
   }
 
@@ -648,6 +660,108 @@ async function applyVariant(ctx: ApplyContext, r: VariantRecord): Promise<void> 
   }
   ctx.stats.entitiesCreated += 1;
   ctx.touched.set(id, 'variant');
+}
+
+/** Entities of `kind` named `name` (by alias) within `scope`. More than one means the catalog itself is ambiguous. */
+async function findNamed(tx: Executor, kind: string, name: string, scope: ReturnType<typeof sql>): Promise<string[]> {
+  const rows = await tx.execute<{ id: string }>(sql`
+    select distinct e.id from ecosystem.entity e join ecosystem.entity_alias a on a.entity_id = e.id
+    where e.kind::text = ${kind} and a.normalized = ${normalizeAlias(name)} and ${scope}`);
+  return rows.map((row) => row.id);
+}
+
+/**
+ * New first-party root weights (no declared parent). Adds release, model and variant when every promotion rule holds
+ * (see promotion.ts), recording the evidence as field assertions on what it creates; otherwise raises a review with
+ * the unmet rules. Re-evaluation is idempotent: existing releases and models are matched by name within their parent.
+ */
+async function promoteFirstPartyRoot(ctx: ApplyContext, r: VariantRecord, candidates: ReviewCandidate[], suggestion: Record<string, unknown>): Promise<void> {
+  const developerId = r.publisher.identifier ? await resolveIdentifier(ctx.tx, r.publisher.identifier) : null;
+  const families = developerId
+    ? [...(await ctx.tx.execute<{ id: string; name: string }>(sql`
+        select e.id, e.name from ecosystem.model_family f join ecosystem.entity e on e.id = f.id where f.developer_org_id = ${developerId} order by e.name`))]
+    : [];
+  const [developer] = developerId && families.length ? await ctx.tx.select({ name: s.entity.name }).from(s.entity).where(eq(s.entity.id, developerId)) : [];
+  const { plan, failures, evidence } = planFirstPartyRelease({ repo: r.identifier.value, developerName: developer?.name ?? null, families, observed: r.observed, releasedOn: r.releasedOn });
+  if (!plan || !developerId) {
+    raise(ctx, {
+      reason: 'new_first_party_model',
+      detail: `${r.identifier.value}: not added automatically: ${failures.map((f) => f.detail).join('; ')}`,
+      candidates,
+      suggestion: { ...suggestion, promotion: { failed: failures, evidence } },
+    });
+    return;
+  }
+  const promotion = { rule: 'first_party_release', repo: r.identifier.value, evidence: plan.evidence };
+
+  const releases = await findNamed(ctx.tx, 'model_release', plan.releaseName, sql`exists (select 1 from ecosystem.model_release x where x.id = e.id and x.family_id = ${plan.family.id})`);
+  if (releases.length > 1) {
+    raise(ctx, { reason: 'new_first_party_model', detail: `${r.identifier.value}: ${releases.length} releases named ${plan.releaseName} in ${plan.family.name}`, candidates, suggestion });
+    return;
+  }
+  let releaseId = releases[0];
+  if (!releaseId) {
+    const slug = await uniqueSlug(ctx.tx, 'model_release', slugify(plan.releaseName));
+    releaseId = await createEntity(ctx.tx, { kind: 'model_release', slug, name: plan.releaseName });
+    await ctx.tx.insert(s.modelRelease).values({ id: releaseId, familyId: plan.family.id, releasedOn: plan.releasedOn, defaultLicenseId: await licenseIdFor(ctx, r.licenseKey) });
+    await assertField(ctx, releaseId, 'auto_promotion', promotion, async () => false);
+    ctx.stats.entitiesCreated += 1;
+    ctx.touched.set(releaseId, 'other');
+    // Dated by publication, never by ingestion.
+    await createEvent(ctx, {
+      dedupeKey: `${ctx.sourceKey}:release:${slug}`,
+      kind: 'model_release',
+      title: `${plan.releaseName} released`,
+      summary: `${plan.modelName} weights published on Hugging Face by ${developer!.name}.`,
+      occurredAt: `${plan.releasedOn}T00:00:00.000Z`,
+      url: r.identifier.url,
+      entityIds: [releaseId, developerId],
+    });
+    ctx.details.push(`added release ${plan.releaseName} to ${plan.family.name}`);
+  }
+
+  const models = await findNamed(ctx.tx, 'model', plan.modelName, sql`exists (select 1 from ecosystem.model x where x.id = e.id and x.release_id = ${releaseId})`);
+  if (models.length > 1) {
+    raise(ctx, { reason: 'new_first_party_model', detail: `${r.identifier.value}: ${models.length} models named ${plan.modelName} in ${plan.releaseName}`, candidates, suggestion });
+    return;
+  }
+  let modelId = models[0];
+  if (!modelId) {
+    modelId = await createEntity(ctx.tx, { kind: 'model', slug: await uniqueSlug(ctx.tx, 'model', slugify(plan.modelName)), name: plan.modelName });
+    await ctx.tx.insert(s.model).values({ id: modelId, releaseId, ...plan.model });
+    await assertField(ctx, modelId, 'auto_promotion', promotion, async () => false);
+    ctx.stats.entitiesCreated += 1;
+    ctx.touched.set(modelId, 'other');
+    ctx.details.push(`added model ${plan.modelName}`);
+  }
+
+  if (!plan.variantKind) {
+    raise(ctx, {
+      reason: 'first_party_variant_kind',
+      detail: `${r.identifier.value}: ${plan.modelName} added from source facts; the repo name states no variant kind${r.suggestedKind ? ` (suggested: ${r.suggestedKind})` : ''}`,
+      candidates,
+      suggestion: { ...suggestion, model: plan.modelName, promotion: { evidence: plan.evidence } },
+    });
+    return;
+  }
+  const variantId = await createVariant(ctx.tx, {
+    slug: await uniqueSlug(ctx.tx, 'model_variant', slugify(r.name)),
+    name: r.name,
+    summary: r.summary ?? null,
+    modelId,
+    kind: plan.variantKind,
+    publisherOrgId: developerId,
+    licenseId: await licenseIdFor(ctx, r.licenseKey),
+    capabilities: plan.variantKind === 'base' ? [] : ((r.capabilities as Capability[] | undefined) ?? ['chat']),
+    releasedOn: plan.releasedOn,
+    aliases: [r.identifier.value],
+    sourceRecordId: ctx.sourceRecordId,
+  });
+  await linkExternalId(ctx.tx, { ...r.identifier, entityId: variantId, firstSeenRecordId: ctx.sourceRecordId });
+  await assertField(ctx, variantId, 'auto_promotion', promotion, async () => false);
+  ctx.stats.entitiesCreated += 1;
+  ctx.touched.set(variantId, 'variant');
+  ctx.details.push(`added ${plan.variantKind} variant ${r.name}: ${plan.evidence.join('; ')}`);
 }
 
 async function applyArtifactSet(ctx: ApplyContext, r: ArtifactSetRecord): Promise<void> {
@@ -749,7 +863,7 @@ async function applyProject(ctx: ApplyContext, r: ProjectRecord): Promise<void> 
     await createEvent(ctx, {
       dedupeKey: releaseDedupeKey(r.identifier, release.tag),
       kind: 'runtime_release',
-      title: `${project!.name} ${release.title || release.tag}`,
+      title: releaseTitle(project!.name, release.tag, release.title),
       summary: release.body?.split('\n').find((line) => line.trim())?.trim().slice(0, 280),
       occurredAt: release.publishedAt,
       url: release.url,
@@ -772,10 +886,16 @@ async function applyEvent(ctx: ApplyContext, r: EventRecord): Promise<void> {
     if (found) entityIds.push(found.id);
     else ctx.details.push(`mention "${mention}" not linked`);
   }
+  let title = r.title;
+  if (r.releaseTag && entityIds.length) {
+    // Same title rule as the GitHub API adapter, so a release reads the same whichever source created it.
+    const [project] = await ctx.tx.select({ name: s.entity.name }).from(s.entity).where(and(inArray(s.entity.id, entityIds), eq(s.entity.kind, 'project'))).limit(1);
+    if (project) title = releaseTitle(project.name, r.releaseTag, r.title);
+  }
   await createEvent(ctx, {
     dedupeKey: r.dedupeKey ?? `${ctx.sourceKey}:${r.url ?? r.title}`,
     kind: r.kind,
-    title: r.title,
+    title,
     summary: r.summary,
     occurredAt: r.occurredAt,
     url: r.url,

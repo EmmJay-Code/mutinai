@@ -8,7 +8,7 @@
 import { readFile } from 'node:fs/promises';
 import type { VariantKind } from '@mutinai/domain';
 import type { Identifier, NormalizedRecord, ObservedModelFacts, RawItem, SourceAdapter, SourceDescriptor, VariantRecord } from '../adapter';
-import { HttpError, nextLink, type HttpClient } from '../http';
+import { HttpError, nextLink, RateLimitError, type HttpClient } from '../http';
 
 export interface HfSibling {
   rfilename: string;
@@ -29,6 +29,8 @@ export interface HfModel {
   config?: { architectures?: string[]; model_type?: string; quantization_config?: { bits?: number; quant_method?: string } };
   safetensors?: { total?: number; parameters?: Record<string, number> };
   gguf?: { total?: number; architecture?: string; context_length?: number };
+  /** Facts from the repository's config.json, fetched only for root weights (no declared parent). */
+  architecture?: HfArchitectureFacts;
   siblings?: HfSibling[];
   gated?: boolean | string;
   private?: boolean;
@@ -120,13 +122,66 @@ export function suggestVariantKind(repo: string): VariantKind | undefined {
   return undefined;
 }
 
-function observedFacts(model: HfModel): ObservedModelFacts | undefined {
-  const facts: ObservedModelFacts = {
-    paramsTotal: model.safetensors?.total ?? model.gguf?.total,
-    contextLength: model.gguf?.context_length,
-    modelType: model.config?.model_type ?? model.gguf?.architecture,
+export interface HfArchitectureFacts {
+  modelType?: string;
+  layers?: number;
+  attentionHeads?: number;
+  kvHeads?: number;
+  headDim?: number;
+  hiddenSize?: number;
+  contextLength?: number;
+  experts?: number;
+  expertsPerToken?: number;
+}
+
+const positiveInt = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined);
+
+/** Language-model architecture facts from a config.json. Multimodal configs nest the language model under `text_config`. */
+export function configFacts(config: unknown): HfArchitectureFacts | undefined {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return undefined;
+  const top = config as Record<string, unknown>;
+  const c = (top.text_config && typeof top.text_config === 'object' ? top.text_config : top) as Record<string, unknown>;
+  const heads = positiveInt(c.num_attention_heads);
+  const hidden = positiveInt(c.hidden_size);
+  const facts: HfArchitectureFacts = {
+    modelType: typeof c.model_type === 'string' ? c.model_type : typeof top.model_type === 'string' ? top.model_type : undefined,
+    layers: positiveInt(c.num_hidden_layers),
+    attentionHeads: heads,
+    kvHeads: positiveInt(c.num_key_value_heads),
+    headDim: positiveInt(c.head_dim) ?? (heads && hidden && hidden % heads === 0 ? hidden / heads : undefined),
+    hiddenSize: hidden,
+    contextLength: positiveInt(c.max_position_embeddings),
+    experts: positiveInt(c.num_experts) ?? positiveInt(c.num_local_experts) ?? positiveInt(c.n_routed_experts),
+    expertsPerToken: positiveInt(c.num_experts_per_tok),
   };
-  return Object.values(facts).some((v) => v != null) ? facts : undefined;
+  const defined = Object.fromEntries(Object.entries(facts).filter(([, v]) => v !== undefined)) as HfArchitectureFacts;
+  return Object.keys(defined).length ? defined : undefined;
+}
+
+/** Weights with no declared parent, published as a language model: the only repos worth a config.json request. */
+export const isRootLanguageModel = (m: HfModel) =>
+  !lineage(m) && (!m.pipeline_tag || LLM_PIPELINES.has(m.pipeline_tag)) && (m.siblings ?? []).some((f) => f.rfilename.endsWith('.safetensors'));
+
+/** Evidence that a repo without a pipeline tag is a language model (not, say, a 3D mesh or materials model). */
+const languageModelEvidence = (m: HfModel) =>
+  Boolean(m.architecture?.layers) || Boolean(m.gguf) || (m.config?.architectures ?? []).some((a) => /For(CausalLM|ConditionalGeneration)$/.test(a));
+
+function observedFacts(model: HfModel): ObservedModelFacts | undefined {
+  const a = model.architecture;
+  const facts: ObservedModelFacts = {
+    architecture: a?.layers ? ((a.experts ?? 0) > 1 ? 'moe' : 'dense') : undefined,
+    paramsTotal: model.safetensors?.total ?? model.gguf?.total,
+    layers: a?.layers,
+    attentionHeads: a?.attentionHeads,
+    kvHeads: a?.kvHeads,
+    headDim: a?.headDim,
+    contextLength: a?.contextLength ?? model.gguf?.context_length,
+    modelType: model.config?.model_type ?? a?.modelType ?? model.gguf?.architecture,
+    experts: a?.experts,
+    expertsPerToken: a?.expertsPerToken,
+  };
+  const defined = Object.fromEntries(Object.entries(facts).filter(([, v]) => v != null)) as ObservedModelFacts;
+  return Object.keys(defined).length ? defined : undefined;
 }
 
 const prettyName = (repo: string) => repo.replace(/-/g, ' ').replace(/\b(\d+(?:\.\d+)?)b\b/gi, '$1B');
@@ -148,6 +203,9 @@ export function normalizeHuggingFaceModel(item: RawItem): NormalizedRecord[] {
   const publisher = { identifier: { namespace: 'huggingface-org', value: owner, url: `https://huggingface.co/${owner}` }, name: owner };
   const rel = lineage(model);
   const licenseKey = model.cardData?.license ?? model.tags?.find((t) => t.startsWith('license:'))?.slice('license:'.length);
+  if (!rel && !model.pipeline_tag && !languageModelEvidence(model)) {
+    return [{ type: 'unsupported', identifier, reason: 'unsupported_repo', detail: 'no language-model evidence (no pipeline tag, causal-LM architecture or config facts)' }];
+  }
 
   if (rel?.relation === 'adapter') {
     return [{ type: 'unsupported', identifier, reason: 'unsupported_repo', detail: `LoRA/PEFT adapter for ${rel.bases.join(', ')}; Mutinai models complete weight sets only` }];
@@ -178,7 +236,7 @@ export function normalizeHuggingFaceModel(item: RawItem): NormalizedRecord[] {
       derivation,
       suggestedKind: suggestVariantKind(repo),
       licenseKey,
-      capabilities: derivation ? capabilities : undefined,
+      capabilities,
       releasedOn: model.createdAt?.slice(0, 10),
       observed: observedFacts(model),
     },
@@ -205,6 +263,7 @@ export function projectHfModel(model: HfModel): HfModel {
     config: model.config ? { architectures: model.config.architectures, model_type: model.config.model_type, quantization_config: q ? { bits: q.bits, quant_method: q.quant_method } : undefined } : undefined,
     safetensors: model.safetensors ? { total: model.safetensors.total, parameters: model.safetensors.parameters } : undefined,
     gguf: model.gguf ? { total: model.gguf.total, architecture: model.gguf.architecture, context_length: model.gguf.context_length } : undefined,
+    architecture: model.architecture,
     siblings: weightFiles,
     gated: model.gated,
   };
@@ -232,7 +291,7 @@ export interface HuggingFaceAdapterOptions {
    * Derivatives of known repos, discovered through the Hub's `base_model:<relation>:<repo>` tags: the most-downloaded
    * `perBase` repos per base and relation. Keeps discovery anchored to variants Mutinai already models.
    */
-  derivatives?: { bases: string[]; relations: string[]; perBase: number };
+  derivatives?: { bases: string[]; relations: string[]; perBase: number; /** Skip derivatives with fewer likes (a community-attention floor). */ minLikes?: number };
   baseUrl?: string;
   pageSize?: number;
 }
@@ -272,11 +331,24 @@ export function createHuggingFaceAdapter(opts: HuggingFaceAdapterOptions): Sourc
           throw error;
         }
         if (!model || typeof model.id !== 'string' || !Array.isArray(model.siblings ?? [])) throw new HttpError(url, 200, `unexpected model payload for ${id}`);
+        const hidden = model.private || model.disabled;
+        const architecture = !hidden && isRootLanguageModel(model) ? await rootConfigFacts(model.id) : undefined;
         const fetchedAt = new Date();
-        const payload: HfModel = model.private || model.disabled ? { id: model.id, unavailable: { status: 403 } } : projectHfModel(model);
+        const payload: HfModel = hidden ? { id: model.id, unavailable: { status: 403 } } : projectHfModel({ ...model, architecture });
         const values = Object.fromEntries(Object.entries({ downloads: model.downloads, likes: model.likes }).filter(([, v]) => typeof v === 'number')) as Record<string, number>;
         yielded += 1;
         yield { externalId: model.id, url: `${base}/${model.id}`, fetchedAt, contentType: 'application/json', payload, metrics: Object.keys(values).length ? [{ identifier: hfIdentifier(model.id), values }] : undefined };
+      }
+
+      // Root weights may be a new first-party model: config.json carries the architecture facts needed to add one.
+      // One extra request, only for such repos; missing or gated configs are skipped, rate limits still stop the run.
+      async function rootConfigFacts(id: string): Promise<HfArchitectureFacts | undefined> {
+        try {
+          return configFacts((await opts.client.getJson<unknown>(`${base}/${encodeRepo(id)}/resolve/main/config.json`, { signal: ctx.signal })).data);
+        } catch (error) {
+          if (error instanceof HttpError && !(error instanceof RateLimitError)) return undefined;
+          throw error;
+        }
       }
 
       for (const id of repos) {
@@ -301,8 +373,8 @@ export function createHuggingFaceAdapter(opts: HuggingFaceAdapterOptions): Sourc
       for (const baseRepo of derivatives?.bases ?? []) {
         for (const relation of derivatives!.relations) {
           const filter = encodeURIComponent(`base_model:${relation}:${baseRepo}`);
-          const url = `${base}/api/models?filter=${filter}&sort=downloads&direction=-1&limit=${Math.min(derivatives!.perBase, 100)}&expand[]=lastModified&expand[]=pipeline_tag`;
-          const { data, response } = await opts.client.getJson<{ id: string; lastModified?: string; pipeline_tag?: string }[]>(url, { signal: ctx.signal });
+          const url = `${base}/api/models?filter=${filter}&sort=downloads&direction=-1&limit=${Math.min(derivatives!.perBase, 100)}&expand[]=lastModified&expand[]=pipeline_tag&expand[]=likes`;
+          const { data, response } = await opts.client.getJson<{ id: string; lastModified?: string; pipeline_tag?: string; likes?: number }[]>(url, { signal: ctx.signal });
           if (!Array.isArray(data)) throw new HttpError(url, response.status, `expected a JSON array listing ${relation} derivatives of ${baseRepo}`);
           for (const m of data.slice(0, derivatives!.perBase)) {
             if (full()) return;
@@ -310,6 +382,7 @@ export function createHuggingFaceAdapter(opts: HuggingFaceAdapterOptions): Sourc
             // Sorted by downloads, not time: skip (rather than stop at) repos unchanged since the window.
             if (ctx.since && m.lastModified && new Date(m.lastModified) < ctx.since) continue;
             if (m.pipeline_tag && !LLM_PIPELINES.has(m.pipeline_tag)) continue;
+            if (derivatives!.minLikes && (m.likes ?? 0) < derivatives!.minLikes) continue;
             yield* detail(m.id);
           }
         }

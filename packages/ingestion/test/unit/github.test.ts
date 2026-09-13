@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectRecord, RawItem } from '../../src/adapter';
-import { createGitHubAdapter, normalizeGitHubRepo, projectGitHubRepo, type GitHubRepo } from '../../src/adapters/github';
+import { createGitHubAdapter, normalizeGitHubRepo, projectGitHubRepo, releaseSummaryLine, type GitHubRepo } from '../../src/adapters/github';
 import { HttpError, RateLimitError } from '../../src/http';
 import { memoryValidators, offlineGitHub, recordedGitHub } from '../support/github';
 
@@ -27,6 +27,15 @@ describe('GitHub normalization (recorded responses)', () => {
     const [rec] = normalizeGitHubRepo({ externalId: 'x', fetchedAt: new Date(), contentType: 'application/json', payload: projectGitHubRepo(llamaRepo, llamaReleases, 'ggml-org/llama.cpp') }) as ProjectRecord[];
     expect(rec).toMatchObject({ type: 'project', identifier: { namespace: 'github', value: 'ggml-org/llama.cpp' }, fields: { summary: 'LLM inference in C/C++', homepageUrl: 'https://llama.app' } });
     expect(rec!.releases!.map((r) => r.prerelease)).toEqual([true, true, true]);
+  });
+
+  it('summarises release notes with their first prose line, not a markdown heading or image', () => {
+    expect(releaseSummaryLine("## What's Changed\n* Fix KV cache reuse by @dev in https://github.com/x/y/pull/1")).toBe('Fix KV cache reuse by @dev in https://github.com/x/y/pull/1');
+    expect(releaseSummaryLine('# v0.29.0\n\n## Highlights\nThis release features **1,200 commits** from `320` contributors.')).toBe('This release features 1,200 commits from 320 contributors.');
+    expect(releaseSummaryLine('<img width="600" alt="ollama" src="x" />\n\n### Added\n- [ChatGPT Desktop](https://x) support')).toBe('ChatGPT Desktop support');
+    expect(releaseSummaryLine('Keep num_ctx and top_k as written')).toBe('Keep num_ctx and top_k as written');
+    expect(releaseSummaryLine('## Only headings\n---')).toBeNull();
+    expect(releaseSummaryLine(null)).toBeNull();
   });
 
   it('keeps the requested identity when GitHub redirects to a renamed repository', () => {

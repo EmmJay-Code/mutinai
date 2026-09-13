@@ -97,13 +97,13 @@ describe('live Hugging Face ingestion (recorded Hub responses)', () => {
     await linkExternalId(h.db, { namespace: 'huggingface', value: 'Qwen/Qwen3-8B', entityId: target!.id });
 
     const { stats } = await runAdapter({ db: h.db, store }, live());
-    expect(stats.resolved).toBe(2); // Qwen/Qwen3-8B now resolves by identifier; the MLX repo applies completely
+    expect(stats.resolved).toBe(3); // Qwen/Qwen3-8B now resolves by identifier; the MLX and GGUF repos apply completely
     expect(await recordStatus('mlx-community/Qwen3-8B-4bit')).toBe('processed');
     expect(await reviews('mlx-community/Qwen3-8B-4bit')).toEqual([expect.objectContaining({ reason: 'unknown_base', status: 'superseded' })]);
 
-    // The GGUF repo applies its known schemes; Q5_0 is not in the catalog, so it stays blocked on that alone.
+    // Every scheme in the GGUF repo is a llama.cpp type the catalog defines (Q5_0 included), so nothing stays blocked.
     const ggufReviews = await reviews('Qwen/Qwen3-8B-GGUF');
-    expect(ggufReviews.filter((r) => r.status === 'open')).toEqual([expect.objectContaining({ reason: 'unknown_quantization', subject: 'Q5_0' })]);
+    expect(ggufReviews.filter((r) => r.status === 'open')).toEqual([]);
     // Identified by the artifact identifiers this source attached: an artifact that already existed for the same
     // variant, scheme and publisher is reused (and its size corrected by the higher-priority live source), not duplicated.
     const artifacts = await h.db.execute<{ scheme: string; size_bytes: number; publisher: string }>(sql`
@@ -114,6 +114,7 @@ describe('live Hugging Face ingestion (recorded Hub responses)', () => {
     expect(artifacts.map((a) => [a.scheme, Number(a.size_bytes), a.publisher])).toEqual([
       ['MLX 4-bit', 4607835174, 'mlx-community'],
       ['Q4_K_M', 5027783488, 'qwen'],
+      ['Q5_0', expect.any(Number), 'qwen'],
       ['Q5_K_M', expect.any(Number), 'qwen'],
       ['Q6_K', expect.any(Number), 'qwen'],
       ['Q8_0', expect.any(Number), 'qwen'],

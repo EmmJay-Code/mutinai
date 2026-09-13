@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Database, Executor } from '../client';
 import { createAccountWithProfile } from '../identity';
 import * as s from '../schema';
+import { ensureQuantizationSchemes } from '../reference';
 import { refreshSearchText } from '../search-text';
 import { createArtifact, createEntity, createRelation, createVariant, ensureSource, linkExternalId } from '../writers';
 import * as catalog from './catalog';
@@ -62,7 +63,7 @@ export async function seedCatalog(db: Executor): Promise<Registry> {
 
   for (const o of catalog.organizations) {
     const id = await createEntity(db, { kind: 'organization', slug: o.slug, name: o.name, summary: o.summary });
-    await db.insert(s.organization).values({ id, orgKind: o.orgKind, websiteUrl: o.websiteUrl, country: o.country });
+    await db.insert(s.organization).values({ id, orgKind: o.orgKind, recognized: true, websiteUrl: o.websiteUrl, country: o.country });
     reg.set('organization', o.slug, id);
   }
   for (const [namespace, value, slug] of catalog.organizationIdentifiers) {
@@ -90,11 +91,8 @@ export async function seedCatalog(db: Executor): Promise<Registry> {
     reg.set('model', m.slug, id);
   }
 
-  for (const sc of catalog.schemes) {
-    const id = await createEntity(db, { kind: 'quantization_scheme', slug: sc.slug, name: sc.name, summary: sc.summary });
-    await db.insert(s.quantizationScheme).values({ id, method: sc.method, format: sc.format, bitsPerWeight: sc.bitsPerWeight });
-    reg.set('quantization_scheme', sc.slug, id);
-  }
+  const { ids: schemeIds } = await ensureQuantizationSchemes(db);
+  for (const [slug, id] of schemeIds) reg.set('quantization_scheme', slug, id);
 
   const modelBySlug = new Map(catalog.models.map((m) => [m.slug, m]));
   const releaseBySlug = new Map(catalog.releases.map((r) => [r.slug, r]));

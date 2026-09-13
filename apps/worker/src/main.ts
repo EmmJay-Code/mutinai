@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { createDatabase, FIXTURE_SOURCE_KEY, jobs, linkExternalId, REPO_ROOT, requireEnv, runMigrations, schema, seedDatabase } from '@mutinai/db';
+import { createDatabase, ensureQuantizationSchemes, FIXTURE_SOURCE_KEY, jobs, linkExternalId, REPO_ROOT, requireEnv, runMigrations, schema, seedDatabase } from '@mutinai/db';
 import {
   ADAPTERS,
   ARXIV_MIN_INTERVAL_MS,
@@ -54,7 +54,7 @@ const LIVE_SOURCES = ['huggingface', 'github', 'feeds', 'arxiv'] as const;
 type LiveSource = (typeof LIVE_SOURCES)[number];
 const hfWatchlist = JSON.parse(readFileSync(new URL('../sources/huggingface.json', import.meta.url), 'utf8')) as {
   authors: string[];
-  derivatives: { relations: string[]; perVariant: number };
+  derivatives: { relations: string[]; perVariant: number; minLikes?: number };
 };
 
 const feedWatchlist = JSON.parse(readFileSync(new URL('../sources/feeds.json', import.meta.url), 'utf8')) as { feeds: FeedConfig[] };
@@ -110,7 +110,7 @@ async function buildAdapter(name: string, flags: IngestFlags): Promise<SourceAda
       repos: [...repos],
       // With no explicit selection, the curated watchlist applies: first-party authors plus derivatives of known variants.
       authors: flags.authors ?? (selecting ? [] : hfWatchlist.authors),
-      derivatives: flags.derivatives || !selecting ? { bases: await knownVariantRepos(), relations: hfWatchlist.derivatives.relations, perBase: hfWatchlist.derivatives.perVariant } : undefined,
+      derivatives: flags.derivatives || !selecting ? { bases: await knownVariantRepos(), relations: hfWatchlist.derivatives.relations, perBase: hfWatchlist.derivatives.perVariant, minLikes: hfWatchlist.derivatives.minLikes } : undefined,
     });
   }
   if (name === 'github') {
@@ -292,6 +292,9 @@ async function bootstrap() {
     await seedDatabase(db);
     log('seeded fixture catalog and demo community');
   }
+  // Reference vocabulary added to the repository after a database was seeded (e.g. new quantization schemes).
+  const { created } = await ensureQuantizationSchemes(db);
+  if (created) log(`added ${created} quantization scheme(s)`);
   await ingest('fixtures', NO_FLAGS);
   await work(true);
   log('bootstrap complete');

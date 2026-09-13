@@ -38,7 +38,26 @@ export interface GitHubRepo {
   unavailable?: { status: number };
 }
 
-const firstLine = (body: string | null | undefined) => body?.split('\n').map((l) => l.trim()).find(Boolean)?.slice(0, 280) ?? null;
+/**
+ * A readable one-line summary of release notes: the first prose line, skipping headings, HTML, images, tables, rules and
+ * code fences, with list markers and inline markdown removed. At most 280 characters; full notes are never stored.
+ */
+export function releaseSummaryLine(body: string | null | undefined): string | null {
+  for (const raw of body?.split('\n') ?? []) {
+    const line = raw.trim();
+    if (!line || /^(#|<|!\[|\||```|[-*_=]{3,}$)/.test(line)) continue;
+    const text = line
+      .replace(/^([-*+]|\d+\.)\s+/, '')
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/(\*\*|\*|`)(.+?)\1/g, '$2')
+      .replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (text.length >= 3) return text.slice(0, 280);
+  }
+  return null;
+}
 
 const toRelease = (r: GitHubReleaseSnapshot): ReleaseInfo | null =>
   r.published_at ? { tag: r.tag_name, title: r.name ?? r.tag_name, publishedAt: r.published_at, url: r.html_url, body: r.body ?? undefined, prerelease: r.prerelease ?? false } : null;
@@ -87,7 +106,7 @@ export function projectGitHubRepo(repo: Record<string, unknown>, releases: Recor
         published_at: (r.published_at as string | null) ?? null,
         html_url: String(r.html_url),
         prerelease: Boolean(r.prerelease),
-        body: firstLine(r.body as string | null),
+        body: releaseSummaryLine(r.body as string | null),
       })),
   };
 }

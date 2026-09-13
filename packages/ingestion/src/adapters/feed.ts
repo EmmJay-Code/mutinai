@@ -174,7 +174,7 @@ export function normalizeFeedEntry(item: RawItem): NormalizedRecord[] {
     const tag = releaseTag(entry.url);
     if (!tag) throw new Error(`${feed.key}: entry ${entry.id} does not link to a GitHub release`);
     const repo: Identifier = { namespace: 'github', value: feed.githubReleasesOf.toLowerCase() };
-    return [{ type: 'event', kind: feed.kind ?? 'runtime_release', title: entry.title, summary: entry.excerpt ?? undefined, occurredAt, url: entry.url ?? undefined, dedupeKey: releaseDedupeKey(repo, tag), identifiers: [repo] }];
+    return [{ type: 'event', kind: feed.kind ?? 'runtime_release', title: entry.title, summary: entry.excerpt ?? undefined, occurredAt, url: entry.url ?? undefined, dedupeKey: releaseDedupeKey(repo, tag), identifiers: [repo], releaseTag: tag }];
   }
   return [
     {

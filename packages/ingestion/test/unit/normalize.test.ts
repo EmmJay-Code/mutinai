@@ -43,7 +43,7 @@ describe('Hugging Face normalization', () => {
   });
 
   it('first-party repos without a base produce a variant with no derivation', () => {
-    const [rec] = normalizeHuggingFaceModel(raw({ id: 'meta-llama/Llama-3.1-8B-Instruct', tags: [] }));
+    const [rec] = normalizeHuggingFaceModel(raw({ id: 'meta-llama/Llama-3.1-8B-Instruct', pipeline_tag: 'text-generation', tags: [] }));
     expect(rec).toMatchObject({ type: 'variant', derivation: undefined, bases: undefined, suggestedKind: 'instruct' });
   });
 

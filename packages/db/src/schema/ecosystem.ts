@@ -118,6 +118,12 @@ export const license = ecosystem.table('license', {
 export const organization = ecosystem.table('organization', {
   id: entityPk(),
   orgKind: organizationKind().notNull(),
+  /**
+   * A recognized ecosystem organization (editorial: model developers, hardware vendors, project maintainers). Publisher
+   * accounts that ingestion records for provenance, such as the Hugging Face account behind a community fine-tune, are
+   * not, and stay off public organization surfaces. See docs/adr/0009-freshness-and-publisher-accounts.md.
+   */
+  recognized: boolean().notNull().default(false),
   websiteUrl: text(),
   country: text(),
 });

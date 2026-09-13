@@ -36,7 +36,7 @@ describe('live GitHub ingestion (recorded API responses)', () => {
 
     const project = await catalog.getProjectDetail(h.db, 'llama-cpp');
     expect(project!.homepageUrl).toBe('https://llama.app');
-    expect(await events()).toEqual([{ title: 'llama.cpp llama.cpp 1.0', summary: '## Highlights', dedupe_key: 'github:ggml-org/llama.cpp:release:v1.0.0' }]);
+    expect(await events()).toEqual([{ title: 'llama.cpp 1.0', summary: 'Much faster.', dedupe_key: 'github:ggml-org/llama.cpp:release:v1.0.0' }]);
     const provenance = await catalog.getProvenance(h.db, project!.id);
     expect(provenance.sources.map((s) => s.name)).toContain('GitHub');
   });
@@ -53,6 +53,6 @@ describe('live GitHub ingestion (recorded API responses)', () => {
     const edited = releases.map((r) => ((r as { tag_name: string }).tag_name === 'v1.0.0' ? { ...(r as object), name: 'llama.cpp 1.0 (edited)' } : r));
     const { stats } = await runAdapter({ db: h.db, store }, adapter({ 'ggml-org/llama.cpp': { repo: llamaRepo, releases: edited } }, ['ggml-org/llama.cpp']));
     expect(stats).toMatchObject({ new: 1, eventsCreated: 0, eventsUpdated: 1 });
-    expect((await events()).map((e) => e.title)).toEqual(['llama.cpp llama.cpp 1.0 (edited)']);
+    expect((await events()).map((e) => e.title)).toEqual(['llama.cpp 1.0 (edited)']);
   });
 });

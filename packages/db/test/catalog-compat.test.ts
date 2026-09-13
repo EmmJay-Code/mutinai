@@ -142,12 +142,16 @@ describe('visual summaries', () => {
     expect(await catalog.benchmarkFrontier(h.db, 'no-such-benchmark')).toBeNull();
   });
 
-  it('counts events per month with gaps filled', async () => {
-    const months = await catalog.eventActivityByMonth(h.db, 12);
-    expect(months).toHaveLength(12);
-    expect(months.at(-1)).toMatchObject({ month: '2025-04', count: 1 });
-    expect(months.find((m) => m.month === '2025-01')?.count).toBe(4);
-    expect(months.find((m) => m.month === '2024-10')?.count).toBe(0);
+  it('lists events by when they happened, with ingest time kept separate and the subject first', async () => {
+    const events = await catalog.listEvents(h.db, { limit: 100 });
+    expect(events.map((e) => new Date(e.occurredAt).getTime())).toEqual([...events.map((e) => new Date(e.occurredAt).getTime())].sort((a, b) => b - a));
+    const qwen3 = events.find((e) => e.title.startsWith('Qwen3 released'))!;
+    expect(new Date(qwen3.occurredAt).toISOString().slice(0, 10)).toBe('2025-04-29');
+    expect(new Date(qwen3.discoveredAt).getTime()).toBeGreaterThan(new Date(qwen3.occurredAt).getTime());
+    expect(qwen3).toMatchObject({ sourceKind: 'fixture', entities: [{ slug: 'qwen3', role: 'subject', category: null }] });
+    const vllm = events.find((e) => e.entities.some((x) => x.slug === 'vllm'))!;
+    expect(vllm.entities.find((x) => x.slug === 'vllm')).toMatchObject({ kind: 'project', category: 'runtime' });
+    expect(await catalog.listEvents(h.db, { since: new Date('2025-04-01T00:00:00Z'), limit: 100 })).toHaveLength(events.filter((e) => new Date(e.occurredAt) >= new Date('2025-04-01T00:00:00Z')).length);
   });
 
   it('summarises reference-system compatibility for every model in one pass', async () => {

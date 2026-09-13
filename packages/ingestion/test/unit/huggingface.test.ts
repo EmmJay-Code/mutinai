@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ArtifactSetRecord, RawItem, VariantRecord } from '../../src/adapter';
-import { createHuggingFaceAdapter, ggufSchemes, normalizeHuggingFaceModel, projectHfModel, suggestVariantKind, type HfModel } from '../../src/adapters/huggingface';
+import { configFacts, createHuggingFaceAdapter, ggufSchemes, normalizeHuggingFaceModel, projectHfModel, suggestVariantKind, type HfModel } from '../../src/adapters/huggingface';
 import { canonicalJson, sha256 } from '../../src/hash';
 import { HttpError } from '../../src/http';
 import { offlineHub, recordedHf } from '../support/recorded';
@@ -120,6 +120,43 @@ describe('Hugging Face normalization (edge cases)', () => {
   });
 });
 
+describe('Hugging Face root weights (new first-party models)', () => {
+  // config.json of Qwen/Qwen3.8-27B (September 2026): a multimodal config with the language model under text_config.
+  const qwen38Config = { architectures: ['Qwen3_5ForConditionalGeneration'], model_type: 'qwen3_5', text_config: { model_type: 'qwen3_5_text', num_hidden_layers: 64, num_attention_heads: 24, num_key_value_heads: 4, head_dim: 256, hidden_size: 5120, max_position_embeddings: 262144 } };
+  const qwen38: HfModel = { id: 'Qwen/Qwen3.8-27B', createdAt: '2026-08-05T09:00:00.000Z', pipeline_tag: 'image-text-to-text', library_name: 'transformers', tags: ['conversational', 'license:apache-2.0'], safetensors: { total: 27781427952 }, siblings: [{ rfilename: 'model-00001-of-00011.safetensors', size: 1 }] };
+
+  it('reads architecture facts from config.json, nested or not, deriving head dim only from hidden size', () => {
+    expect(configFacts(qwen38Config)).toEqual({ modelType: 'qwen3_5_text', layers: 64, attentionHeads: 24, kvHeads: 4, headDim: 256, hiddenSize: 5120, contextLength: 262144 });
+    expect(configFacts({ num_hidden_layers: 36, num_attention_heads: 32, hidden_size: 4096, n_routed_experts: 128, num_experts_per_tok: 4 })).toMatchObject({ headDim: 128, experts: 128, expertsPerToken: 4 });
+    expect(configFacts({ num_hidden_layers: 'many' })).toBeUndefined();
+    expect(configFacts(null)).toBeUndefined();
+  });
+
+  it('fetches config.json only for root weights and carries the facts into the variant record', async () => {
+    const { client, requested } = offlineHub({
+      overrides: { 'Qwen/Qwen3.8-27B': qwen38 },
+      routes: [(url) => (url.pathname === '/Qwen/Qwen3.8-27B/resolve/main/config.json' ? { status: 200, body: qwen38Config } : undefined)],
+    });
+    const items = await collect(createHuggingFaceAdapter({ client, repos: ['Qwen/Qwen3.8-27B', 'Qwen/Qwen3-8B'] }).fetch({}));
+    expect(requested.filter((u) => u.includes('config.json'))).toEqual(['https://huggingface.co/Qwen/Qwen3.8-27B/resolve/main/config.json']);
+    const [rec] = normalizeHuggingFaceModel(items[0]!) as VariantRecord[];
+    expect(rec).toMatchObject({ bases: undefined, releasedOn: '2026-08-05', capabilities: ['chat', 'vision'], observed: { architecture: 'dense', paramsTotal: 27781427952, layers: 64, attentionHeads: 24, kvHeads: 4, headDim: 256, contextLength: 262144 } });
+  });
+
+  it('a missing or gated config.json leaves the facts out without failing the run', async () => {
+    const { client } = offlineHub({ overrides: { 'Qwen/Qwen3.8-27B': qwen38 } });
+    const [item] = await collect(createHuggingFaceAdapter({ client, repos: ['Qwen/Qwen3.8-27B'] }).fetch({}));
+    expect((item!.payload as HfModel).architecture).toBeUndefined();
+  });
+
+  it('repositories without language-model evidence are not modelled', () => {
+    const [mesh] = normalizeHuggingFaceModel(raw({ id: 'microsoft/SQuadGen', library_name: 'pytorch', tags: ['3d', 'mesh-generation'] }));
+    expect(mesh).toMatchObject({ type: 'unsupported', reason: 'unsupported_repo', detail: expect.stringContaining('no language-model evidence') });
+    const [mistral] = normalizeHuggingFaceModel(raw({ id: 'mistralai/Mistral-Small-4-119B-2603', config: { architectures: ['Mistral3ForConditionalGeneration'] } }));
+    expect(mistral).toMatchObject({ type: 'variant' });
+  });
+});
+
 describe('live Hugging Face adapter fetch', () => {
   const listing = (ids: [string, string, string?][]) => ids.map(([id, lastModified, pipeline_tag]) => ({ id, lastModified, pipeline_tag: pipeline_tag ?? 'text-generation' }));
 
@@ -176,6 +213,14 @@ describe('live Hugging Face adapter fetch', () => {
     expect(items.map((i) => i.externalId)).toEqual(['Qwen/Qwen3-8B', 'Qwen/Qwen3-8B-GGUF']);
     expect(requested.filter((u) => u.includes('filter=')).map((u) => new URL(u).searchParams.get('limit'))).toEqual(['2', '2']);
     expect(requested.some((u) => u.includes('x/extra'))).toBe(false);
+  });
+
+  it('skips community derivatives below the likes floor', async () => {
+    const { client } = offlineHub({
+      routes: [(url) => (url.pathname === '/api/models' ? { status: 200, body: [{ id: 'Qwen/Qwen3-8B-GGUF', lastModified: '2026-09-01T00:00:00Z', likes: 40 }, { id: 'nobody/qwen3-8b-copy', lastModified: '2026-09-01T00:00:00Z', likes: 0 }] } : undefined)],
+    });
+    const adapter = createHuggingFaceAdapter({ client, derivatives: { bases: ['Qwen/Qwen3-8B'], relations: ['quantized'], perBase: 5, minLikes: 5 } });
+    expect((await collect(adapter.fetch({}))).map((i) => i.externalId)).toEqual(['Qwen/Qwen3-8B-GGUF']);
   });
 
   it('fails clearly on malformed listings and server errors', async () => {

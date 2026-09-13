@@ -25,25 +25,33 @@ export interface EventDTO {
   kind: string;
   title: string;
   summary: string | null;
+  /** When the event happened. Every time-sensitive surface uses this, never `discoveredAt`. */
   occurredAt: Date;
+  /** When Mutinai first recorded the event (ingest time). Never presented as the event's date. */
+  discoveredAt: Date;
   url: string | null;
   /** Source that reported the event; null for events without a source record. */
   sourceName: string | null;
   sourceKind: string | null;
-  entities: { kind: string; slug: string; name: string; role: string }[];
+  /** Subject first. `category` is set for projects. */
+  entities: { kind: string; slug: string; name: string; role: string; category: string | null }[];
 }
 
-export async function listEvents(db: Executor, opts: { limit?: number; entityId?: string } = {}): Promise<EventDTO[]> {
+export async function listEvents(db: Executor, opts: { limit?: number; entityId?: string; since?: Date } = {}): Promise<EventDTO[]> {
+  const where: SQL[] = [];
+  if (opts.entityId) where.push(sql`exists (select 1 from ecosystem.event_entity x where x.event_id = ev.id and x.entity_id = ${opts.entityId})`);
+  if (opts.since) where.push(sql`ev.occurred_at >= ${opts.since.toISOString()}::timestamptz`);
   return rows<EventDTO>(db, sql`
-    select ev.id, ev.event_kind as kind, ev.title, ev.summary, ev.occurred_at as "occurredAt", ev.url,
+    select ev.id, ev.event_kind as kind, ev.title, ev.summary, ev.occurred_at as "occurredAt", ev.created_at as "discoveredAt", ev.url,
       src.name as "sourceName", src.kind::text as "sourceKind",
-      coalesce((select jsonb_agg(jsonb_build_object('kind', e.kind, 'slug', e.slug, 'name', e.name, 'role', ee.role) order by ee.role desc, e.name)
-        from ecosystem.event_entity ee join ecosystem.entity e on e.id = ee.entity_id where ee.event_id = ev.id), '[]') as entities
+      coalesce((select jsonb_agg(jsonb_build_object('kind', e.kind, 'slug', e.slug, 'name', e.name, 'role', ee.role, 'category', p.category) order by ee.role, e.name)
+        from ecosystem.event_entity ee join ecosystem.entity e on e.id = ee.entity_id left join ecosystem.project p on p.id = e.id
+        where ee.event_id = ev.id), '[]') as entities
     from ecosystem.event ev
     left join ingest.source_record sr on sr.id = ev.source_record_id
     left join ingest.source src on src.id = sr.source_id
-    ${opts.entityId ? sql`where exists (select 1 from ecosystem.event_entity x where x.event_id = ev.id and x.entity_id = ${opts.entityId})` : sql``}
-    order by ev.occurred_at desc
+    ${where.length ? sql`where ${sql.join(where, sql` and `)}` : sql``}
+    order by ev.occurred_at desc, ev.id
     limit ${opts.limit ?? 20}`);
 }
 
@@ -612,6 +620,8 @@ export async function searchEntities(db: Executor, q: string, opts: { kinds?: st
           case when e.name ilike ${like(query)} then 0.6 else 0 end) as score
       from ecosystem.entity e
       where (e.search_vector @@ websearch_to_tsquery('simple', ${query}) or e.name % ${query} or e.name ilike ${like(query)})
+        -- Publisher accounts recorded by ingestion are provenance, not organizations readers should find.
+        and (e.kind <> 'organization' or exists (select 1 from ecosystem.organization o where o.id = e.id and o.recognized))
         ${opts.kinds?.length ? sql`and e.kind::text in (${sql.join(opts.kinds.map((k) => sql`${k}`), sql`, `)})` : sql``}
     )
     select h.kind, h.slug, h.name, h.summary, h.score::float8 as score,
@@ -745,28 +755,38 @@ export async function benchmarkFrontier(db: Executor, benchmarkSlug: string): Pr
   };
 }
 
-export interface MonthActivityDTO {
-  month: string;
-  count: number;
-  kinds: Record<string, number>;
+export interface MetricObservationDTO {
+  entityId: string;
+  entity: { kind: string; slug: string; name: string; modelSlug: string | null };
+  metric: string;
+  observedOn: string;
+  value: number;
+  observedAt: Date;
 }
 
-/** Events per month for the `months` months ending with the most recent event (gaps filled with zero). */
-export async function eventActivityByMonth(db: Executor, months = 12): Promise<MonthActivityDTO[]> {
-  const data = await rows<{ month: string; kind: string; n: number }>(db, sql`
-    select to_char(date_trunc('month', occurred_at), 'YYYY-MM') as month, event_kind::text as kind, count(*)::int as n
-    from ecosystem.event group by 1, 2`);
-  if (!data.length) return [];
-  const latest = data.map((d) => d.month).sort().at(-1)!;
-  const [y, m] = latest.split('-').map(Number) as [number, number];
-  const out: MonthActivityDTO[] = [];
-  for (let i = months - 1; i >= 0; i--) {
-    const d = new Date(Date.UTC(y, m - 1 - i, 1));
-    const key = d.toISOString().slice(0, 7);
-    const entries = data.filter((x) => x.month === key);
-    out.push({ month: key, count: entries.reduce((s, x) => s + x.n, 0), kinds: Object.fromEntries(entries.map((x) => [x.kind, x.n])) });
-  }
-  return out;
+/** Daily source counters (GitHub stars, Hugging Face likes, …) observed since a date, for trend computation. */
+export async function listMetricObservations(db: Executor, opts: { since: Date; metrics: readonly string[] }): Promise<MetricObservationDTO[]> {
+  if (!opts.metrics.length) return [];
+  return rows<MetricObservationDTO>(db, sql`
+    select m.entity_id as "entityId", m.metric, m.observed_on::text as "observedOn", m.value, m.observed_at as "observedAt",
+      jsonb_build_object('kind', e.kind, 'slug', e.slug, 'name', e.name, 'modelSlug', coalesce(vm.slug, am.slug)) as entity
+    from ecosystem.entity_metric m
+    join ecosystem.entity e on e.id = m.entity_id
+    left join ecosystem.model_variant v on v.id = e.id left join ecosystem.entity vm on vm.id = v.model_id
+    left join ecosystem.model_artifact a on a.id = e.id left join ecosystem.model_variant av on av.id = a.variant_id
+    left join ecosystem.entity am on am.id = av.model_id
+    where m.observed_at >= ${opts.since.toISOString()}::timestamptz and e.kind <> 'organization'
+      and m.metric in (${sql.join(opts.metrics.map((x) => sql`${x}`), sql`, `)})
+    order by m.observed_at`);
+}
+
+/** When live sources were first and most recently checked successfully. Timestamps only; no run details. */
+export async function liveSourceStatus(db: Executor): Promise<{ firstCheckedAt: Date | null; lastCheckedAt: Date | null }> {
+  const row = await one<{ firstCheckedAt: Date | null; lastCheckedAt: Date | null }>(db, sql`
+    select min(r.started_at) as "firstCheckedAt", max(r.finished_at) as "lastCheckedAt"
+    from ingest.ingestion_run r join ingest.source s on s.id = r.source_id
+    where r.status = 'succeeded' and s.kind not in ('fixture', 'editorial')`);
+  return { firstCheckedAt: row?.firstCheckedAt ?? null, lastCheckedAt: row?.lastCheckedAt ?? null };
 }
 
 // ─── Prices ──────────────────────────────────────────────────────────────────
