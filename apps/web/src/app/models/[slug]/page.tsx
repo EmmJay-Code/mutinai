@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { IfContributing } from '@/components/preview';
 import { notFound } from 'next/navigation';
 import { PerformanceTable, ProvenanceBlock, RatingSummary, ReviewList, SubmissionList } from '@/components/results';
-import { Basis, Crumbs, Disclosure, Empty, EntitySection, Facts, FitBadge, Glance, LicenseShort, SectionNav, Speed, Tag } from '@/components/ui';
+import { Basis, Crumbs, DataOrigin, Disclosure, Empty, EntitySection, Facts, FitBadge, Glance, LicenseShort, SectionNav, Speed, Tag } from '@/components/ui';
 import { CapabilityDetail, EntityMark, MemoryScale, SystemsMeter } from '@/components/viz';
 import { CAPABILITY_LABEL, formatBytes, formatContext, formatDate, formatMonthYear, formatNumber, formatParams, humanize, isoDate, paramsInWords, VARIANT_KIND_EXPLAINER } from '@/lib/format';
 import { getViewer } from '@/lib/session';
@@ -100,7 +100,7 @@ export default async function ModelPage({ params }: { params: Params }) {
       ]} />
       <div className="entity-top">
         <header className="entity-hero">
-          <div className="kicker"><EntityMark type="model" word /> · {model.release.name}{model.release.releasedOn ? ` · ${formatMonthYear(model.release.releasedOn)}` : ''}</div>
+          <div className="kicker"><EntityMark type="model" word /> · {model.release.name}{model.release.releasedOn ? ` · ${formatMonthYear(model.release.releasedOn)}` : ''} <DataOrigin sources={provenance.sources} /></div>
           <h1>{model.name}</h1>
           <p className="lede">A {paramsInWords(model.paramsTotal)}-parameter {archPhrase} from {model.developer.name}. {model.release.summary}</p>
           <Glance

@@ -329,6 +329,8 @@ details.filter-panel > summary { list-style: none; } details.filter-panel > summ
 .basis-estimated { color: var(--est); background: var(--warn-soft); }
 .basis-community { color: var(--e-member); background: var(--danger-soft); }
 .basis-source { color: var(--muted); background: var(--sunken); }
+.basis-live { color: var(--ok); background: var(--ok-soft); }
+.basis-fixture { color: var(--est); background: var(--warn-soft); }
 .status-private { color: var(--danger); background: var(--danger-soft); }
 .source-mark { font-size: 10px; color: var(--muted); vertical-align: super; margin-left: 2px; }
 

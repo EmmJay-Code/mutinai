@@ -1,6 +1,6 @@
-import type { CompatResult, SpeedAssessment } from '@mutinai/domain';
+import { summariseOrigin, type CompatResult, type SpeedAssessment } from '@mutinai/domain';
 import Link from 'next/link';
-import { entityHref, formatNumber, humanize } from '@/lib/format';
+import { entityHref, formatDate, formatNumber, humanize } from '@/lib/format';
 import { EntityMark, entityTypeFor } from './viz';
 
 export function PageHead({ eyebrow, title, lede, crumbs, children }: {
@@ -165,8 +165,19 @@ export function FitBadge({ fit }: { fit: CompatResult['fit'] }) {
   return <span className={`fit fit-${fit}`}>{FIT_LABEL[fit]}</span>;
 }
 
-export function Basis({ kind, children, title }: { kind: 'measured' | 'estimated' | 'community' | 'source'; children: React.ReactNode; title?: string }) {
+export function Basis({ kind, children, title }: { kind: 'measured' | 'estimated' | 'community' | 'source' | 'live' | 'fixture'; children: React.ReactNode; title?: string }) {
   return <span className={`basis basis-${kind}`} title={title}>{children}</span>;
+}
+
+/** Where an entity's facts come from: live sources, or illustrative fixtures only. Renders nothing without sources. */
+export function DataOrigin({ sources }: { sources: { kind: string; name: string; lastFetchedAt: Date | string | null }[] }) {
+  const summary = summariseOrigin(sources);
+  if (!summary || summary.origin === 'editorial') return null;
+  const when = summary.lastFetchedAt ? ` · ${formatDate(summary.lastFetchedAt)}` : '';
+  if (summary.origin === 'live') {
+    return <Basis kind="live" title={`Fetched from ${summary.names.join(', ')}${when}. Other figures on this page may still be illustrative; see Sources.`}>Live · {summary.names.join(', ')}</Basis>;
+  }
+  return <Basis kind="fixture" title="Illustrative fixture data, not fetched from a live source">Fixture data</Basis>;
 }
 
 /** Throughput with an explicit basis. Estimates are visually distinct and always carry a range. */

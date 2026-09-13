@@ -1,6 +1,6 @@
 import type { catalog, community } from '@mutinai/db';
 import type { RatingAggregate } from '@mutinai/domain';
-import { RATING_DIMENSIONS } from '@mutinai/domain';
+import { originOfSourceKind, RATING_DIMENSIONS, sourceKindLabel } from '@mutinai/domain';
 import Link from 'next/link';
 import { vote } from '@/app/actions';
 import { contributionsEnabled } from '@/lib/session';
@@ -193,7 +193,7 @@ export function ProvenanceBlock({ provenance }: { provenance: catalog.Provenance
         <ul>
           {provenance.sources.map((s) => (
             <li key={s.key}>
-              {s.name} <span className="faint">({humanize(s.kind)}, {s.records} record{s.records === 1 ? '' : 's'}{s.lastFetchedAt ? `, ${formatDate(s.lastFetchedAt)}` : ''})</span>
+              {s.name} <span className="faint">({originOfSourceKind(s.kind) === 'live' ? 'live source' : sourceKindLabel(s.kind).toLowerCase()}, {s.records} record{s.records === 1 ? '' : 's'}{s.lastFetchedAt ? `, ${formatDate(s.lastFetchedAt)}` : ''})</span>
             </li>
           ))}
         </ul>

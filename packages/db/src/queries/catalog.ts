@@ -27,15 +27,21 @@ export interface EventDTO {
   summary: string | null;
   occurredAt: Date;
   url: string | null;
+  /** Source that reported the event; null for events without a source record. */
+  sourceName: string | null;
+  sourceKind: string | null;
   entities: { kind: string; slug: string; name: string; role: string }[];
 }
 
 export async function listEvents(db: Executor, opts: { limit?: number; entityId?: string } = {}): Promise<EventDTO[]> {
   return rows<EventDTO>(db, sql`
     select ev.id, ev.event_kind as kind, ev.title, ev.summary, ev.occurred_at as "occurredAt", ev.url,
+      src.name as "sourceName", src.kind::text as "sourceKind",
       coalesce((select jsonb_agg(jsonb_build_object('kind', e.kind, 'slug', e.slug, 'name', e.name, 'role', ee.role) order by ee.role desc, e.name)
         from ecosystem.event_entity ee join ecosystem.entity e on e.id = ee.entity_id where ee.event_id = ev.id), '[]') as entities
     from ecosystem.event ev
+    left join ingest.source_record sr on sr.id = ev.source_record_id
+    left join ingest.source src on src.id = sr.source_id
     ${opts.entityId ? sql`where exists (select 1 from ecosystem.event_entity x where x.event_id = ev.id and x.entity_id = ${opts.entityId})` : sql``}
     order by ev.occurred_at desc
     limit ${opts.limit ?? 20}`);

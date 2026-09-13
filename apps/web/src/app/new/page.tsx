@@ -1,6 +1,7 @@
 import { catalog, getDb } from '@mutinai/db';
 import type { Metadata } from 'next';
-import { EntityLink, PageHead } from '@/components/ui';
+import { originOfSourceKind, sourceKindLabel } from '@mutinai/domain';
+import { Basis, EntityLink, PageHead } from '@/components/ui';
 import { EntityMark, type EntityType } from '@/components/viz';
 
 const EVENT_ENTITY: Record<string, EntityType> = { model_release: 'model', runtime_release: 'tool', hardware_launch: 'hardware', benchmark_update: 'bench', announcement: 'event' };
@@ -31,7 +32,12 @@ export default async function WhatsNewPage() {
                   {e.summary && <div className="about">{e.summary}</div>}
                   {e.entities.length > 0 && <div className="tags small" style={{ marginTop: 3 }}>{e.entities.map((x) => <EntityLink key={x.slug} entity={x} mark />)}</div>}
                 </div>
-                <span className="kind">{humanize(e.kind)}</span>
+                <span className="kind">
+                  {humanize(e.kind)}
+                  {e.sourceKind && (originOfSourceKind(e.sourceKind) === 'live'
+                    ? <> <Basis kind="live" title={`Reported by ${e.sourceName}`}>{sourceKindLabel(e.sourceKind)}</Basis></>
+                    : originOfSourceKind(e.sourceKind) === 'fixture' ? <> <Basis kind="fixture" title="Illustrative fixture data">Fixture</Basis></> : null)}
+                </span>
               </li>
             ))}
           </ol>
