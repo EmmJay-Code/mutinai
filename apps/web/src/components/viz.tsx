@@ -199,3 +199,21 @@ export function LinearBar({ value, max, label, display, color }: { value: number
     </div>
   );
 }
+
+const monthShort = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+
+/** Monthly counts as labelled columns: readable at any width, latest month highlighted. HTML, so labels stay legible. */
+export function MonthlyBars({ months, label }: { months: { month: string; count: number }[]; label: string }) {
+  const max = Math.max(...months.map((m) => m.count), 1);
+  return (
+    <div className="monthly" role="img" aria-label={`${label}: ${months.map((m) => `${m.month} ${m.count}`).join(', ')}`}>
+      {months.map((m, i) => (
+        <div key={m.month} className={i === months.length - 1 ? 'col latest' : 'col'} aria-hidden="true">
+          <span className="v">{m.count || ''}</span>
+          <span className="bar"><i style={{ height: `${(m.count / max) * 100}%` }} /></span>
+          <span className="m">{monthShort(m.month)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}

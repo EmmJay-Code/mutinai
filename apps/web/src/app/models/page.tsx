@@ -73,13 +73,20 @@ export default async function ModelsPage({ searchParams }: { searchParams: SP })
   const exploring = activeFilters.length === 0 && !filters.q && !intent;
   const simple = mode === 'simple';
 
-  // “Where to start”: three short, differently-motivated shortlists over the whole catalog.
+  // Candidate pools for the orientation strip below: starting points, most discussed, newest.
   const recommended = all
     .filter((m) => { const s = summary[m.slug]; return !!s?.of && s.runsWell / s.of >= 0.5; })
     .sort((a, b) => profileMean(profiles[b.slug]) - profileMean(profiles[a.slug]) || b.paramsTotal - a.paramsTotal)
     .slice(0, 3);
   const popular = all.filter((m) => m.reviewCount + m.runCount > 0).sort((a, b) => b.reviewCount + b.runCount - (a.reviewCount + a.runCount)).slice(0, 3);
   const latest = all.filter((m) => m.releasedOn).sort((a, b) => b.releasedOn!.localeCompare(a.releasedOn!) || b.paramsTotal - a.paramsTotal).slice(0, 3);
+  // One orientation strip, not a second catalog: two starting points, the most discussed and the newest, without repeats.
+  const picks: { m: Model; tag: string; why: string }[] = [];
+  const taken = (m: Model) => picks.some((p) => p.m.slug === m.slug);
+  const pick = (m: Model | undefined, tag: string, why: (m: Model) => string) => { if (m && !taken(m)) picks.push({ m, tag, why: why(m) }); };
+  recommended.slice(0, 2).forEach((m) => pick(m, 'Worth starting with', (x) => [memoryPhrase(x.minMemoryGb)?.amount, OPENNESS_TEXT[licenseOpenness(x.licenses)].label].filter(Boolean).join(' · ')));
+  pick(popular.find((m) => !taken(m)), 'Popular', (x) => communityPhrase(x.runCount, x.reviewCount) ?? '');
+  pick(latest.find((m) => !taken(m)), 'Right now', (x) => `Released ${formatMonthYear(x.releasedOn)} · ${x.developerName}`);
 
   return (
     <>
@@ -95,7 +102,7 @@ export default async function ModelsPage({ searchParams }: { searchParams: SP })
       </div>
 
       {simple && exploring && (
-        <>
+        <div className="discovery">
           <section className="intents" aria-labelledby="intents-h">
             <div className="intents-head">
               <h2 id="intents-h">What are you looking for?</h2>
@@ -114,15 +121,24 @@ export default async function ModelsPage({ searchParams }: { searchParams: SP })
               ))}
             </ul>
           </section>
-          <div className="shortlist">
-            <Shortlist id="start" title="Recommended to start" items={recommended.map((m) => ({ m, why: [memoryPhrase(m.minMemoryGb)?.amount, OPENNESS_TEXT[licenseOpenness(m.licenses)].label].filter(Boolean).join(' · ') }))} />
-            <Shortlist id="popular" title="Popular with the community" items={popular.map((m) => ({ m, why: communityPhrase(m.runCount, m.reviewCount) ?? '' }))} />
-            <Shortlist id="latest" title="New releases" items={latest.map((m) => ({ m, why: `${formatMonthYear(m.releasedOn)} · ${m.developerName}` }))} />
-          </div>
-        </>
+          {picks.length > 0 && (
+            <section className="starts" aria-labelledby="starts-h">
+              <h2 id="starts-h" className="starts-title">Good places to start</h2>
+              <ul className="starts-list">
+                {picks.map((p) => (
+                  <li key={p.m.slug}>
+                    <span className="starts-tag">{p.tag}</span>
+                    <Link className="starts-name" href={`/models/${p.m.slug}`}>{p.m.name}</Link>
+                    <span className="starts-why">{p.why}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
       )}
 
-      <div className="catalog-head" id="all-models">
+      <div className={`catalog-head${simple && exploring ? ' after-discovery' : ''}`} id="all-models">
         <h2>
           {intent ? <><PathIcon name={intent.key} /> {intent.label}</> : 'All models'}
           <span className="count" aria-live="polite">{shown.length} of {all.length}{filters.q ? ` matching “${filters.q}”` : ''}</span>
@@ -244,23 +260,6 @@ export default async function ModelsPage({ searchParams }: { searchParams: SP })
         </form>
       )}
     </>
-  );
-}
-
-function Shortlist({ id, title, items }: { id: string; title: string; items: { m: Model; why: string }[] }) {
-  if (!items.length) return null;
-  return (
-    <section aria-labelledby={`${id}-h`}>
-      <h2 id={`${id}-h`}>{title}</h2>
-      <ol>
-        {items.map(({ m, why }) => (
-          <li key={m.slug}>
-            <Link href={`/models/${m.slug}`}>{m.name}</Link>
-            {why && <span className="why">{why}</span>}
-          </li>
-        ))}
-      </ol>
-    </section>
   );
 }
 

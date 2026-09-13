@@ -415,7 +415,10 @@ export interface DeviceDTO {
   backends: string[];
   tdpWatts: number | null;
   releasedOn: string | null;
+  /** Manufacturer launch price (MSRP) in USD. Not a current price. */
   launchPriceUsd: number | null;
+  imageUrl: string | null;
+  imageCredit: string | null;
   configurationCount: number;
   resultCount: number;
 }
@@ -424,7 +427,7 @@ const deviceSelect = sql`
   select d.id, de.slug, de.name, de.summary, jsonb_build_object('slug', ve.slug, 'name', ve.name) as vendor,
     d.device_kind as "deviceKind", d.memory_kind as "memoryKind", d.memory_gb as "memoryGb", d.memory_type as "memoryType",
     d.memory_bandwidth_gbps as "memoryBandwidthGbps", d.unified_usable_fraction as "unifiedUsableFraction", d.backends::text[] as backends,
-    d.tdp_watts as "tdpWatts", d.released_on::text as "releasedOn", d.launch_price_usd as "launchPriceUsd",
+    d.tdp_watts as "tdpWatts", d.released_on::text as "releasedOn", d.launch_price_usd as "launchPriceUsd", d.image_url as "imageUrl", d.image_credit as "imageCredit",
     (select count(*)::int from ecosystem.hardware_configuration_component c where c.device_id = d.id) as "configurationCount",
     (select count(distinct br.id)::int from ecosystem.hardware_configuration_component c
       join ecosystem.run_environment env on env.hardware_configuration_id = c.configuration_id
@@ -458,7 +461,10 @@ export interface ConfigurationDTO {
   systemRamGb: number;
   systemRamBandwidthGbps: number | null;
   unifiedMemoryGb: number | null;
+  /** Editorial estimate of the cost to buy or build, in USD. Not a quoted price. */
   approxPriceUsd: number | null;
+  imageUrl: string | null;
+  imageCredit: string | null;
   acceleratorMemoryGb: number;
   components: { slug: string; name: string; count: number; deviceKind: string; memoryKind: string; memoryGb: number | null }[];
   resultCount: number;
@@ -466,7 +472,7 @@ export interface ConfigurationDTO {
 
 const configurationSelect = sql`
   select hc.id, ce.slug, ce.name, ce.summary, hc.form_factor as "formFactor", hc.system_ram_gb as "systemRamGb",
-    hc.system_ram_bandwidth_gbps as "systemRamBandwidthGbps", hc.unified_memory_gb as "unifiedMemoryGb", hc.approx_price_usd as "approxPriceUsd",
+    hc.system_ram_bandwidth_gbps as "systemRamBandwidthGbps", hc.unified_memory_gb as "unifiedMemoryGb", hc.approx_price_usd as "approxPriceUsd", hc.image_url as "imageUrl", hc.image_credit as "imageCredit",
     coalesce(hc.unified_memory_gb, 0) + coalesce((select sum(d.memory_gb * c.count) from ecosystem.hardware_configuration_component c
       join ecosystem.hardware_device d on d.id = c.device_id where c.configuration_id = hc.id and d.memory_kind = 'dedicated'), 0) as "acceleratorMemoryGb",
     (select jsonb_agg(jsonb_build_object('slug', de.slug, 'name', de.name, 'count', c.count, 'deviceKind', d.device_kind, 'memoryKind', d.memory_kind, 'memoryGb', d.memory_gb) order by d.memory_kind, de.name)

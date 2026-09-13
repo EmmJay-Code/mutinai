@@ -217,6 +217,9 @@ export const hardwareDevice = ecosystem.table(
     tdpWatts: integer(),
     releasedOn: date(),
     launchPriceUsd: integer(),
+    /** Product image for presentation. Must be properly sourced; credit it when set. */
+    imageUrl: text(),
+    imageCredit: text(),
   },
   (t) => [check('hardware_device_dedicated_memory', sql`(${t.memoryKind} = 'dedicated') = (${t.memoryGb} is not null)`)],
 );
@@ -229,6 +232,9 @@ export const hardwareConfiguration = ecosystem.table('hardware_configuration', {
   systemRamBandwidthGbps: real(),
   unifiedMemoryGb: real(),
   approxPriceUsd: integer(),
+  /** Product image for presentation. Must be properly sourced; credit it when set. */
+  imageUrl: text(),
+  imageCredit: text(),
 });
 
 export const hardwareConfigurationComponent = ecosystem.table(

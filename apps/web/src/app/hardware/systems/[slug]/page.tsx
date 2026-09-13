@@ -55,7 +55,7 @@ export default async function SystemPage({ params }: { params: Params }) {
               [system.unifiedMemoryGb ? 'Unified memory' : 'GPU memory', formatGb(system.acceleratorMemoryGb || null)],
               ['System RAM', system.systemRamGb ? formatGb(system.systemRamGb) : 'Shared'],
               ['Runs', `${well} of ${results.length}`, 'model variants, 8K'],
-              ['Price', system.approxPriceUsd ? `~$${system.approxPriceUsd.toLocaleString('en-US')}` : '—'],
+              ['Estimated cost', system.approxPriceUsd ? `~$${system.approxPriceUsd.toLocaleString('en-US')}` : '—'],
             ]}
           />
           <div className="page-head-actions tight">

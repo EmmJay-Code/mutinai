@@ -106,6 +106,28 @@ not uniform — it is chosen.
   server & multi-GPU); manufacturer remains a filter.
 - Intent definitions and plain-language phrasing are pure, tested functions in `packages/domain/src/discovery.ts`.
 
+### Composition and spacing
+Density is chunked, not uniform: a reader squinting at a page should still see its regions.
+- Spacing scale `--s1`…`--s7` (4, 8, 12, 16, 24, 32, 56px): small within one object, medium between related objects,
+  large (`.region`, 56px; 40px on phones) between conceptual sections.
+- **Discover** reads in one order: opening (headline, two actions, four plain numbers — no miniature charts) → top
+  story with model snapshot → Latest + Trending/community → Ecosystem trends (benchmark frontier and monthly releases,
+  given room) → What can I run? → Explore Mutinai (question links, gateways) → Learn.
+- **Models Simple**: intent grid and a single "Good places to start" strip form one discovery layer; a large gap and
+  a larger heading mark the start of All models; each result is a lightly contained object with identity and
+  decision information separated by a rule. Technical mode starts the dense index immediately.
+- **Hardware Simple** is product browsing: two cards per row (one on narrow screens) with a fixed 4:3 image frame,
+  name, maker and class, a plain positioning line, a three-cell spec strip (memory, capacity, price) and a measurement
+  signal. Technical mode keeps the comparison index (memory scales, bandwidth, 4-bit capacity, $/GB, counts).
+
+### Hardware imagery and prices
+- Devices and reference systems have nullable `image_url` / `image_credit` (migration 0002). Images must be properly
+  sourced and credited; nothing is fetched or scraped. Without an image the frame shows a class placeholder.
+- A price is always shown with its meaning (`PriceQuote`: amount, currency, kind, source, checked date;
+  `formatPrice` in `packages/domain`). Kinds: `msrp`, `observed`, `used`, `estimate`. Observed and used prices show
+  their check date. Current fixture data holds only device launch MSRPs and editorial build-cost estimates for
+  reference systems, labelled as such; no current prices are shown.
+
 ### Visualisations
 Capability profile (four bars: coding, reasoning, knowledge, instruction — relative to the best open result in the
 catalog), memory scale (log 4–256 GB with 8/24/96 marks), fit meter (systems where a model runs well, as segments),

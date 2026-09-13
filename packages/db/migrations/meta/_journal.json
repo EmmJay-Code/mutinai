@@ -15,6 +15,13 @@
       "when": 1789255361414,
       "tag": "0001_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789271718650,
+      "tag": "0002_hardware_images",
+      "breakpoints": true
     }
   ]
 }

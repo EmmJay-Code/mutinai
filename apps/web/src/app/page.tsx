@@ -1,7 +1,7 @@
 import { catalog, community, compatQueries, getDb } from '@mutinai/db';
 import Link from 'next/link';
 import { EntityLink, FitBadge, LicenseShort, Speed } from '@/components/ui';
-import { ActivityBars, Avatar, CapabilityBars, EntityMark, FrontierChart, Heat, MemoryScale, Sparkline, SystemsMeter, type EntityType } from '@/components/viz';
+import { Avatar, CapabilityBars, EntityMark, FrontierChart, Heat, MemoryScale, MonthlyBars, SystemsMeter, type EntityType } from '@/components/viz';
 import { entityHref, FORM_FACTOR_LABEL, formatDate, formatNumber, formatParams, humanize, isoDate } from '@/lib/format';
 
 const PREVIEW_SYSTEM = 'rtx-4090-workstation';
@@ -24,7 +24,8 @@ const LEARN_PATHS = [
   { id: 'build', title: 'Build with them', text: 'APIs, coding assistants, agents and fine-tuning.' },
 ];
 
-const monthLabel = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+const monthLong = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+const shortDevice = (n: string) => n.replace(/^(NVIDIA|AMD|Apple)\s+(GeForce\s+|Radeon\s+)?/, '');
 
 export default async function DiscoverPage() {
   const db = getDb();
@@ -49,14 +50,10 @@ export default async function DiscoverPage() {
     .sort((a, b) => b.paramsTotal - a.paramsTotal)
     .slice(0, 5);
 
-  // Signals, computed over the 12 months ending with the latest recorded event.
-  const endOf = (m: string) => `${m}-31`;
-  const modelsOverTime = months.map((m) => models.filter((x) => x.releasedOn && x.releasedOn <= endOf(m.month)).length);
-  const runsOverTime = months.map((m) => submissions.filter((s) => isoDate(s.createdAt) <= endOf(m.month)).length);
   const latestMonth = months.at(-1);
   const best = frontier?.points.at(-1);
 
-  // Editorial priority: one lead development, a few trending signals, then the chronological record.
+  // Reading order: what Mutinai is → the one development that matters → latest + trending → deeper trends → questions.
   const lead = events.find((e) => e.kind === 'model_release' || e.kind === 'hardware_launch') ?? events[0];
   const rest = events.filter((e) => e !== lead).slice(0, 8);
   const leadRelease = lead?.entities.find((e) => e.kind === 'model_release');
@@ -78,39 +75,23 @@ export default async function DiscoverPage() {
     <>
       <section className="opening" aria-labelledby="hero-title">
         <div>
-          <div className="eyebrow">Open models · right now{latestMonth ? ` · data to ${monthLabel(latestMonth.month)}` : ''}</div>
+          <div className="eyebrow">Open models · right now{latestMonth ? ` · data to ${monthLong(latestMonth.month)}` : ''}</div>
           <h1 id="hero-title">Everything happening in open models.</h1>
           <p className="lede">Open-weight models, the hardware they run on and the tools around them — measured, sourced, and checked against the machine you have.</p>
-          <nav className="questions" aria-label="Start with a question">
-            <span>Start with a question</span>
-            {QUESTIONS.map((q) => <Link key={q.href} href={q.href}>{q.label}</Link>)}
-          </nav>
-        </div>
-        <div className="signals" aria-label="Ecosystem signals">
-          <div className="signal">
-            <div className="signal-value">{models.length}</div>
-            <div className="signal-label">Open models tracked</div>
-            <Sparkline values={modelsOverTime} width={104} label={`Models tracked grew from ${modelsOverTime[0]} to ${models.length} over 12 months`} />
-          </div>
-          <div className="signal">
-            <div className="signal-value">{latestMonth?.count ?? 0}<small>in {latestMonth ? monthLabel(latestMonth.month) : '—'}</small></div>
-            <div className="signal-label">Releases & launches</div>
-            <ActivityBars values={months.map((m) => m.count)} label="Events per month over 12 months" width={104} height={20} />
-          </div>
-          <div className="signal">
-            <div className="signal-value">{best ? best.value.toFixed(1) : '—'}<small>%</small></div>
-            <div className="signal-label">Best open GPQA · {best?.name ?? '—'}</div>
-            {frontier && <Sparkline values={frontier.points.map((p) => p.value)} width={104} label="Best open GPQA score over time" />}
-          </div>
-          <div className="signal">
-            <div className="signal-value">{stats.verified}<small>of {stats.submissions} runs</small></div>
-            <div className="signal-label">Verified community runs</div>
-            <Sparkline values={runsOverTime} width={104} label="Community benchmark runs over 12 months" />
+          <div className="opening-actions">
+            <a className="btn btn-primary btn-large" href="#now">Explore what’s new</a>
+            <Link className="btn btn-large" href="/run">What can I run?</Link>
           </div>
         </div>
+        <dl className="stats" aria-label="The ecosystem at a glance">
+          <div><dt>Open-weight models tracked</dt><dd>{models.length}</dd></div>
+          <div><dt>Releases &amp; launches in {latestMonth ? monthLong(latestMonth.month) : 'the latest month'}</dt><dd>{latestMonth?.count ?? 0}</dd></div>
+          <div><dt>Best open GPQA Diamond score{best ? ` · ${best.name}` : ''}</dt><dd>{best ? best.value.toFixed(1) : '—'}<small>%</small></dd></div>
+          <div><dt>Verified community runs</dt><dd>{stats.verified}<small>of {stats.submissions}</small></dd></div>
+        </dl>
       </section>
 
-      <section className="now" id="now" aria-labelledby="now-heading">
+      <section className="region now" id="now" aria-labelledby="now-heading">
         <div className="section-head now-head">
           <h2 id="now-heading"><span className="glyph g-event" aria-hidden="true" /> Happening now</h2>
           <div className="more"><Link href="/new">Full timeline →</Link></div>
@@ -188,7 +169,7 @@ export default async function DiscoverPage() {
                 {topDevice && (
                   <li>
                     <EntityMark type="hardware" />
-                    <Link href={`/hardware/${topDevice.slug}`}>{topDevice.name.replace(/^(NVIDIA|AMD|Apple)\s+(GeForce\s+|Radeon\s+)?/, '')}<span className="sub">{topDevice.resultCount} measurements</span></Link>
+                    <Link href={`/hardware/${topDevice.slug}`}>{shortDevice(topDevice.name)}<span className="sub">{topDevice.resultCount} measurements</span></Link>
                     <Heat level={2} label="Most measured hardware" />
                   </li>
                 )}
@@ -220,42 +201,36 @@ export default async function DiscoverPage() {
                 )}
               </ul>
             </section>
-            {frontier && (
-              <section className="rail-block" aria-labelledby="frontier-h">
-                <h3 id="frontier-h"><span><span className="glyph g-bench" aria-hidden="true" /> Benchmark frontier</span><span>{frontier.benchmarkName}</span></h3>
-                <FrontierChart points={frontier.points} height={96} />
-                <p className="small muted" style={{ margin: '4px 0 0' }}>Best developer-reported open score, by release date.</p>
-              </section>
-            )}
           </aside>
         </div>
       </section>
 
-      <section className="section" aria-labelledby="explore-h">
-        <div className="section-head"><h2 id="explore-h">Explore</h2></div>
-        <div className="gateways">
-          <Link href="/models" className="gateway">
-            <span className="glyph g-model" aria-hidden="true" />
-            <h3>Models</h3>
-            <p>Find the right open model by what you want to do, and see what it needs to run.</p>
-            <span className="gateway-links">{activeModels.map((m) => <span key={m.slug}>{m.name}</span>)}</span>
-          </Link>
-          <Link href="/hardware" className="gateway">
-            <span className="glyph g-hardware" aria-hidden="true" />
-            <h3>Hardware</h3>
-            <p>A first machine, a GPU upgrade, a Mac or a server — compared by what they can hold.</p>
-            <span className="gateway-links">{devices.filter((d) => d.deviceKind !== 'accelerator').slice(0, 3).map((d) => <span key={d.slug}>{d.name.replace(/^(NVIDIA|AMD|Apple)\s+(GeForce\s+|Radeon\s+)?/, '')}</span>)}</span>
-          </Link>
-          <Link href="/tools" className="gateway">
-            <span className="glyph g-tool" aria-hidden="true" />
-            <h3>Tools</h3>
-            <p>Runtimes, interfaces, coding assistants and fine-tuning.</p>
-            <span className="gateway-links">{[...runtimes].sort((a, b) => b.resultCount - a.resultCount).slice(0, 3).map((r) => <span key={r.slug}>{r.name}</span>)}</span>
-          </Link>
+      <section className="region" aria-labelledby="trends-h">
+        <div className="section-head">
+          <h2 id="trends-h">Ecosystem trends</h2>
+          <div className="more"><Link href="/new">Full timeline →</Link></div>
+        </div>
+        <div className="trends">
+          {frontier && (
+            <figure className="trend-panel">
+              <figcaption>
+                <h3><span className="glyph g-bench" aria-hidden="true" /> Benchmark frontier · {frontier.benchmarkName}</h3>
+                <p>Best developer-reported open score, stepping up each time a release beats it.</p>
+              </figcaption>
+              <FrontierChart points={frontier.points} width={460} height={170} />
+            </figure>
+          )}
+          <figure className="trend-panel">
+            <figcaption>
+              <h3><span className="glyph g-event" aria-hidden="true" /> Releases and launches per month</h3>
+              <p>Model releases, hardware launches, runtime releases and announcements tracked by Mutinai.</p>
+            </figcaption>
+            <MonthlyBars months={months} label="Releases and launches per month" />
+          </figure>
         </div>
       </section>
 
-      <section className="section" aria-labelledby="run-heading">
+      <section className="region" aria-labelledby="run-heading">
         <div className="run-band">
           <div>
             <div className="step">What can I run?</div>
@@ -298,7 +273,35 @@ export default async function DiscoverPage() {
         </div>
       </section>
 
-      <section className="section" aria-labelledby="learn-h">
+      <section className="region" aria-labelledby="explore-h">
+        <div className="section-head"><h2 id="explore-h">Explore Mutinai</h2></div>
+        <h3 className="explore-q">Start with a question</h3>
+        <ul className="questions">
+          {QUESTIONS.map((q) => <li key={q.href}><Link href={q.href}>{q.label}</Link></li>)}
+        </ul>
+        <div className="gateways">
+          <Link href="/models" className="gateway">
+            <span className="glyph g-model" aria-hidden="true" />
+            <h3>Models</h3>
+            <p>Find the right open model by what you want to do, and see what it needs to run.</p>
+            <span className="gateway-links">{activeModels.map((m) => <span key={m.slug}>{m.name}</span>)}</span>
+          </Link>
+          <Link href="/hardware" className="gateway">
+            <span className="glyph g-hardware" aria-hidden="true" />
+            <h3>Hardware</h3>
+            <p>A first machine, a GPU upgrade, a Mac or a server — compared by what they can hold.</p>
+            <span className="gateway-links">{devices.filter((d) => d.deviceKind !== 'accelerator').slice(0, 3).map((d) => <span key={d.slug}>{shortDevice(d.name)}</span>)}</span>
+          </Link>
+          <Link href="/tools" className="gateway">
+            <span className="glyph g-tool" aria-hidden="true" />
+            <h3>Tools</h3>
+            <p>Runtimes, interfaces, coding assistants and fine-tuning.</p>
+            <span className="gateway-links">{[...runtimes].sort((a, b) => b.resultCount - a.resultCount).slice(0, 3).map((r) => <span key={r.slug}>{r.name}</span>)}</span>
+          </Link>
+        </div>
+      </section>
+
+      <section className="region" aria-labelledby="learn-h">
         <div className="section-head"><h2 id="learn-h">Learn</h2><div className="more"><Link href="/learn">All guides →</Link></div></div>
         <ol className="paths">
           {LEARN_PATHS.map((p) => (

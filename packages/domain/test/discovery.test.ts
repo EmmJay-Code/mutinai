@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   describeModel,
   deviceCategory,
+  deviceClassLabel,
+  devicePositioning,
+  formatPrice,
   hardwareGoal,
   licenseOpenness,
   memoryPhrase,
@@ -11,6 +14,7 @@ import {
   speedPhrase,
   systemCategories,
   systemMatchesGoal,
+  systemPositioning,
 } from '../src/discovery';
 
 const model = (over: Partial<Parameters<typeof describeModel>[0]> & { minMemoryGb?: number | null; licenses?: { commercialUse: string }[] } = {}) => ({
@@ -108,5 +112,25 @@ describe('hardware organisation', () => {
     expect(systemMatchesGoal(hardwareGoal('first')!, { formFactor: 'desktop', approxPriceUsd: null }, 36)).toBe(false);
     expect(systemMatchesGoal(hardwareGoal('workstation')!, { formFactor: 'desktop', approxPriceUsd: 3500 }, 45.6)).toBe(true);
     expect(systemMatchesGoal(hardwareGoal('workstation')!, { formFactor: 'server', approxPriceUsd: null }, 76)).toBe(false);
+  });
+});
+
+describe('hardware presentation', () => {
+  it('always says what a price means', () => {
+    expect(formatPrice({ amount: 1999, currency: 'USD', kind: 'msrp' })).toMatchObject({ value: '$1,999', qualifier: 'MSRP' });
+    expect(formatPrice({ amount: 1649, currency: 'USD', kind: 'observed', checkedOn: '2026-09-03', source: 'Retailer' })).toMatchObject({
+      value: '~$1,649', qualifier: 'observed · checked Sep 2026', description: 'Price seen at a retailer on the date shown. Source: Retailer.',
+    });
+    expect(formatPrice({ amount: 3200, currency: 'USD', kind: 'estimate' })).toMatchObject({ value: '~$3,200', qualifier: 'build estimate' });
+    expect(formatPrice({ amount: 900, currency: 'CHF', kind: 'used' }).value).toBe('~900 CHF');
+  });
+
+  it('labels hardware by class and positions it in plain language', () => {
+    expect(deviceClassLabel({ deviceKind: 'gpu', memoryKind: 'dedicated' })).toBe('Graphics card');
+    expect(deviceClassLabel({ deviceKind: 'soc', memoryKind: 'unified' })).toBe('Unified-memory chip');
+    expect(devicePositioning({ deviceKind: 'gpu', memoryKind: 'dedicated' }, 47)).toMatch(/^Top consumer card/);
+    expect(devicePositioning({ deviceKind: 'gpu', memoryKind: 'dedicated' }, 22)).toBe('Comfortable with 14B–24B models.');
+    expect(systemPositioning('accelerator', 73, 2)).toMatch(/^Multi-GPU/);
+    expect(systemPositioning('ram', 170, 0)).toMatch(/^Budget build/);
   });
 });

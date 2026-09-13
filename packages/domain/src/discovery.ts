@@ -233,3 +233,76 @@ export function speedPhrase(bandwidthGbps: number | null | undefined): { text: s
   if (bandwidthGbps >= 200) return { text: 'Moderate speed', tone: 'mixed' };
   return { text: 'Slow replies', tone: 'limited' };
 }
+
+// ─── Hardware presentation ───────────────────────────────────────────────────
+
+/**
+ * What a price means. Prices are time-sensitive claims, never timeless facts: a launch MSRP, a price observed at a
+ * retailer on a date, a typical used price, or an editorial estimate (e.g. the cost of a reference build).
+ */
+export type PriceKind = 'msrp' | 'observed' | 'used' | 'estimate';
+
+export interface PriceQuote {
+  amount: number;
+  /** ISO 4217 code. */
+  currency: string;
+  kind: PriceKind;
+  source?: string | null;
+  /** ISO date the price was observed. Only meaningful for observed and used prices. */
+  checkedOn?: string | null;
+}
+
+const CURRENCY_SYMBOL: Record<string, string> = { USD: '$', EUR: '€', GBP: '£' };
+const PRICE_QUALIFIER: Record<PriceKind, string> = { msrp: 'MSRP', observed: 'observed', used: 'used', estimate: 'build estimate' };
+const PRICE_DESCRIPTION: Record<PriceKind, string> = {
+  msrp: 'Launch price set by the manufacturer. Current prices vary.',
+  observed: 'Price seen at a retailer on the date shown.',
+  used: 'Typical second-hand price on the date shown.',
+  estimate: 'Approximate cost to buy or build. Not a quoted price.',
+};
+
+/** "$1,999" + "MSRP", or "~$1,649" + "observed · checked Sep 2026". The qualifier is never omitted. */
+export function formatPrice(q: PriceQuote): { value: string; qualifier: string; description: string } {
+  const symbol = CURRENCY_SYMBOL[q.currency];
+  const n = Math.round(q.amount).toLocaleString('en-US');
+  const amount = symbol ? `${symbol}${n}` : `${n} ${q.currency}`;
+  const dated = (q.kind === 'observed' || q.kind === 'used') && q.checkedOn
+    ? ` · checked ${new Date(`${q.checkedOn.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })}`
+    : '';
+  return {
+    value: `${q.kind === 'msrp' ? '' : '~'}${amount}`,
+    qualifier: `${PRICE_QUALIFIER[q.kind]}${dated}`,
+    description: `${PRICE_DESCRIPTION[q.kind]}${q.source ? ` Source: ${q.source}.` : ''}`,
+  };
+}
+
+export function deviceClassLabel(d: { deviceKind: string; memoryKind: string }): string {
+  if (d.deviceKind === 'accelerator') return 'Datacenter GPU';
+  if (d.memoryKind === 'unified') return 'Unified-memory chip';
+  if (d.deviceKind === 'gpu') return 'Graphics card';
+  if (d.deviceKind === 'cpu') return 'Processor';
+  return 'Device';
+}
+
+const FORM_FACTOR_SINGULAR: Record<string, string> = { laptop: 'Laptop', desktop: 'Desktop', mini_pc: 'Mini PC', server: 'Server' };
+export const systemClassLabel = (c: { formFactor: string }) => FORM_FACTOR_SINGULAR[c.formFactor] ?? 'System';
+
+/** One plain line on what a device is for, from its class and the largest dense model it holds at 4-bit. */
+export function devicePositioning(d: { deviceKind: string; memoryKind: string }, maxParamsB: number | null): string {
+  if (d.deviceKind === 'accelerator') return 'Datacenter card for large models and many users.';
+  if (d.memoryKind === 'unified') return 'One large shared memory pool; capacity is chosen when the system is bought.';
+  if (d.deviceKind === 'cpu' || maxParamsB == null) return 'Runs small models without a graphics card, slowly.';
+  if (maxParamsB >= 40) return 'Top consumer card: 30B-class models with room for long context.';
+  if (maxParamsB >= 30) return 'Runs 30B-class models on a single card.';
+  if (maxParamsB >= 18) return 'Comfortable with 14B–24B models.';
+  return 'Entry card for 7B–14B models.';
+}
+
+export function systemPositioning(placement: 'accelerator' | 'unified' | 'ram', maxParamsB: number, gpuCount: number): string {
+  if (placement === 'ram') return 'Budget build without a graphics card; best for small models.';
+  if (gpuCount >= 2) return 'Multi-GPU build that splits 70B-class models across cards.';
+  if (maxParamsB >= 100) return 'Holds 70B-class and larger models in memory.';
+  if (maxParamsB >= 60) return 'Holds 70B-class models.';
+  if (maxParamsB >= 30) return 'Handles 30B-class models comfortably.';
+  return 'Entry system for 7B–14B models.';
+}

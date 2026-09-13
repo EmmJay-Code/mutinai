@@ -1,5 +1,5 @@
 import { catalog, getDb } from '@mutinai/db';
-import { compat, COMPUTE_BACKENDS, DEVICE_KINDS, deviceCategory, HARDWARE_CATEGORIES, HARDWARE_GOALS, hardwareGoal, speedPhrase, systemCategories, systemMatchesGoal, type HardwareCategory } from '@mutinai/domain';
+import { compat, COMPUTE_BACKENDS, DEVICE_KINDS, deviceCategory, deviceClassLabel, devicePositioning, formatPrice, HARDWARE_CATEGORIES, HARDWARE_GOALS, hardwareGoal, systemCategories, systemClassLabel, systemMatchesGoal, systemPositioning, type HardwareCategory, type PriceQuote } from '@mutinai/domain';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { PathIcon } from '@/components/icons';
@@ -7,7 +7,7 @@ import { InfoModeToggle } from '@/components/info-mode';
 import { Empty } from '@/components/ui';
 import { LinearBar, MemoryScale, ParamsReach } from '@/components/viz';
 import { formatGb, humanize, searchParam } from '@/lib/format';
-import { BACKEND_LABEL, DEVICE_KIND_LABEL, deviceSimpleSentence, maxParamsAtQ4, pricePerGb, roughParams, systemSimpleSentence, systemUsableGb } from '@/lib/hardware';
+import { BACKEND_LABEL, DEVICE_KIND_LABEL, devicePrice, gpuCount, maxParamsAtQ4, pricePerGb, roughParams, systemPrice, systemUsableGb } from '@/lib/hardware';
 import { getInfoMode } from '@/lib/info-mode';
 
 export const metadata: Metadata = { title: 'Hardware' };
@@ -83,26 +83,28 @@ export default async function HardwarePage({ searchParams }: { searchParams: SP 
       </div>
 
       {simple && exploring && (
-        <section className="intents" aria-labelledby="goals-h">
-          <div className="intents-head">
-            <h2 id="goals-h">What are you trying to do?</h2>
-            <a className="small muted" href="#catalog">Skip to all hardware ↓</a>
-          </div>
-          <ul className="intent-grid five">
-            {HARDWARE_GOALS.map((g) => (
-              <li key={g.key}>
-                <Link className="intent" href={`/hardware?goal=${g.key}#catalog`}>
-                  <PathIcon name={g.key} />
-                  <strong>{g.label}</strong>
-                  <span className="hint">{g.hint}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <div className="discovery">
+          <section className="intents" aria-labelledby="goals-h">
+            <div className="intents-head">
+              <h2 id="goals-h">What are you trying to do?</h2>
+              <a className="small muted" href="#catalog">Skip to all hardware ↓</a>
+            </div>
+            <ul className="intent-grid five">
+              {HARDWARE_GOALS.map((g) => (
+                <li key={g.key}>
+                  <Link className="intent" href={`/hardware?goal=${g.key}#catalog`}>
+                    <PathIcon name={g.key} />
+                    <strong>{g.label}</strong>
+                    <span className="hint">{g.hint}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
       )}
 
-      <div className="catalog-head" id="catalog">
+      <div className={`catalog-head${simple && exploring ? ' after-discovery' : ''}`} id="catalog">
         <h2>
           {goal ? <><PathIcon name={goal.key} /> {heading}</> : heading}
           <span className="count" aria-live="polite">{[devices.length ? `${devices.length} device${devices.length === 1 ? '' : 's'}` : null, systems.length ? `${systems.length} system${systems.length === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ') || 'none'}</span>
@@ -161,10 +163,10 @@ export default async function HardwarePage({ searchParams }: { searchParams: SP 
         <section aria-labelledby="devices-h">
           {systems.length > 0 && <h3 className="list-title" id="devices-h">{cat === 'server' ? 'Accelerators' : cat === 'unified' ? 'Chips' : 'Devices'} <span className="num">{devices.length}</span></h3>}
           {simple ? (
-            <ul className="simple-list">{devices.map((d) => <SimpleDeviceRow key={d.slug} d={d} />)}</ul>
+            <ul className="hw-grid">{devices.map((d) => <DeviceCard key={d.slug} d={d} />)}</ul>
           ) : (
             <>
-              <div className="index-head hardware-grid" aria-hidden="true"><span /><span>Device</span><span>Memory</span><span>Memory speed</span><span>Holds at 4-bit</span><span>Value · results</span></div>
+              <div className="index-head hardware-grid" aria-hidden="true"><span /><span>Device</span><span>Memory</span><span>Memory speed</span><span>Holds at 4-bit</span><span>Launch $/GB · results</span></div>
               <ul className="list-plain">
                 {devices.map((d) => {
                   const usable = d.memoryKind === 'dedicated' && d.memoryGb ? d.memoryGb * compat.COMPAT_CONSTANTS.dedicatedUsableFraction : null;
@@ -184,8 +186,8 @@ export default async function HardwarePage({ searchParams }: { searchParams: SP 
                       <div><span className="cell-label">Memory speed</span><LinearBar value={d.memoryBandwidthGbps} max={maxBandwidth} label="GB/s" display={d.memoryBandwidthGbps ? d.memoryBandwidthGbps.toLocaleString('en-US') : '—'} /></div>
                       <div><span className="cell-label">Holds at 4-bit</span>{usable ? <ParamsReach maxB={maxParamsAtQ4(usable)} label="up to" /> : <span className="small muted">{d.memoryKind === 'unified' ? 'depends on system' : 'depends on RAM'}</span>}</div>
                       <div className="small">
-                        <span className="cell-label">Value · results</span>
-                        {ppg ? <div><span className="num">${ppg}</span> <span className="muted">/ GB</span></div> : <div className="faint">no price</div>}
+                        <span className="cell-label">Launch $/GB · results</span>
+                        {ppg ? <div title="Launch price (MSRP) divided by memory"><span className="num">${ppg}</span> <span className="muted">/ GB MSRP</span></div> : <div className="faint">no launch price</div>}
                         <div className="muted">{d.resultCount ? `${d.resultCount} measurements` : 'no measurements'}</div>
                       </div>
                     </li>
@@ -201,10 +203,10 @@ export default async function HardwarePage({ searchParams }: { searchParams: SP 
         <section aria-labelledby="systems-h">
           {devices.length > 0 && <h3 className="list-title" id="systems-h">{cat === 'server' ? 'Servers & multi-GPU builds' : cat === 'unified' ? 'Systems built on them' : 'Reference systems'} <span className="num">{systems.length}</span></h3>}
           {simple ? (
-            <ul className="simple-list">{systems.map((c) => <SimpleSystemRow key={c.slug} c={c} />)}</ul>
+            <ul className="hw-grid">{systems.map((c) => <SystemCard key={c.slug} c={c} />)}</ul>
           ) : (
             <>
-              <div className="index-head systems-grid" aria-hidden="true"><span /><span>System</span><span>Usable memory</span><span>Holds at 4-bit</span><span>Price</span></div>
+              <div className="index-head systems-grid" aria-hidden="true"><span /><span>System</span><span>Usable memory</span><span>Holds at 4-bit</span><span>Estimated cost</span></div>
               <ul className="list-plain">
                 {systems.map((c) => {
                   const usable = systemUsableGb(c);
@@ -218,7 +220,7 @@ export default async function HardwarePage({ searchParams }: { searchParams: SP 
                       </div>
                       <div><span className="cell-label">Usable memory</span><MemoryScale gb={usable.gb} label={usable.where === 'ram' ? 'RAM' : usable.where === 'unified' ? 'unified' : 'GPU'} /></div>
                       <div><span className="cell-label">Holds at 4-bit</span><ParamsReach maxB={maxParamsAtQ4(usable.gb)} label="up to" /></div>
-                      <div className="small"><span className="cell-label">Price</span>{c.approxPriceUsd ? <><span className="num">~${c.approxPriceUsd.toLocaleString('en-US')}</span><div className="muted">{formatGb(c.acceleratorMemoryGb || c.systemRamGb)} total</div></> : <span className="faint">—</span>}</div>
+                      <div className="small"><span className="cell-label">Estimated cost</span>{c.approxPriceUsd ? <><span className="num" title="Editorial estimate of the build cost, not a quoted price">~${c.approxPriceUsd.toLocaleString('en-US')}</span><div className="muted">{formatGb(c.acceleratorMemoryGb || c.systemRamGb)} total</div></> : <span className="faint">—</span>}</div>
                     </li>
                   );
                 })}
@@ -228,49 +230,92 @@ export default async function HardwarePage({ searchParams }: { searchParams: SP 
         </section>
       )}
       {simple && (devices.length > 0 || systems.length > 0) && (
-        <p className="small muted mode-hint">Memory bandwidth, 4-bit capacity, price per GB and measurement counts are in the <strong>Technical</strong> view.</p>
+        <p className="small muted mode-hint">Memory bandwidth, usable-memory scales, price per GB and side-by-side scanning are in the <strong>Technical</strong> view. Prices are launch MSRPs or editorial estimates, not current prices.</p>
       )}
     </>
   );
 }
 
-function SimpleDeviceRow({ d }: { d: catalog.DeviceDTO }) {
-  const usable = d.memoryKind === 'dedicated' && d.memoryGb ? d.memoryGb * compat.COMPAT_CONSTANTS.dedicatedUsableFraction : null;
-  const speed = speedPhrase(d.memoryBandwidthGbps);
+/** Consistent 4:3 frame. Shows the product image when a properly sourced one exists, otherwise a class placeholder. */
+function HardwareMedia({ src, credit, name, icon }: { src: string | null; credit: string | null; name: string; icon: string }) {
   return (
-    <li className="simple-row">
-      <div>
-        <h3 className="name"><Link href={`/hardware/${d.slug}`}>{d.name}</Link></h3>
-        <p className="simple-desc">{deviceSimpleSentence(d)}</p>
+    <div className="hw-media">
+      {src
+        ? <img src={src} alt={name} title={credit ? `Image: ${credit}` : undefined} loading="lazy" decoding="async" />
+        : <span className="hw-placeholder" aria-hidden="true"><PathIcon name={icon} size={30} /></span>}
+    </div>
+  );
+}
+
+function PriceSpec({ quote, none }: { quote: PriceQuote | null; none: string }) {
+  if (!quote) return <div><dt>Price</dt><dd><span className="faint">{none}</span></dd></div>;
+  const p = formatPrice(quote);
+  return <div><dt>Price</dt><dd title={p.description}><b>{p.value}</b>{p.qualifier}</dd></div>;
+}
+
+function Signal({ count }: { count: number }) {
+  return <span className={count ? 'hw-signal' : 'hw-signal none'}>{count ? `${count} measurement${count === 1 ? '' : 's'}` : 'No measurements yet'}</span>;
+}
+
+function DeviceCard({ d }: { d: catalog.DeviceDTO }) {
+  const usable = d.memoryKind === 'dedicated' && d.memoryGb ? d.memoryGb * compat.COMPAT_CONSTANTS.dedicatedUsableFraction : null;
+  const maxB = usable != null ? maxParamsAtQ4(usable) : null;
+  const icon = d.deviceKind === 'accelerator' ? 'server' : d.deviceKind === 'gpu' ? 'gpu' : 'chip';
+  return (
+    <li className="hw-card">
+      <HardwareMedia src={d.imageUrl} credit={d.imageCredit} name={d.name} icon={icon} />
+      <div className="hw-id">
+        <h3 className="hw-name"><Link href={`/hardware/${d.slug}`}>{shortName(d.name)}</Link></h3>
+        <div className="hw-meta">{d.vendor.name} · {deviceClassLabel(d)}{d.releasedOn ? ` · ${d.releasedOn.slice(0, 4)}` : ''}</div>
+        <p className="hw-pitch">{devicePositioning(d, maxB)}</p>
       </div>
-      <ul className="facts-plain">
-        {d.memoryKind === 'dedicated' && d.memoryGb
-          ? <li className="t-mem"><span><b>{d.memoryGb} GB</b> <span className="soft">of video memory</span></span></li>
-          : <li className="t-mem"><span><b>{d.memoryKind === 'unified' ? 'Shared memory' : 'System RAM'}</b> <span className="soft">· amount depends on the system</span></span></li>}
-        {usable != null && <li className="t-neutral"><span>Runs models up to <b>{roughParams(maxParamsAtQ4(usable))}</b> parameters</span></li>}
-        {speed && <li className={`t-${speed.tone}`}><span>{speed.text}</span></li>}
-        {d.launchPriceUsd ? <li className="t-neutral"><span>${d.launchPriceUsd.toLocaleString('en-US')} at launch</span></li> : null}
-      </ul>
-      <Link className="simple-go" href={`/hardware/${d.slug}`} aria-label={`View ${d.name}`}>View hardware →</Link>
+      <dl className="hw-specs">
+        <div>
+          <dt>Memory</dt>
+          <dd>{d.memoryKind === 'dedicated' && d.memoryGb ? <><b>{d.memoryGb} GB</b>VRAM</> : d.memoryKind === 'unified' ? <><b>Unified</b>size set per system</> : <><b>System RAM</b>no VRAM</>}</dd>
+        </div>
+        <div>
+          <dt>Capacity</dt>
+          <dd>{maxB != null ? <><b>{roughParams(maxB)}</b>models at 4-bit</> : <><b>Varies</b>with memory</>}</dd>
+        </div>
+        <PriceSpec quote={devicePrice(d)} none="No launch price" />
+      </dl>
+      <div className="hw-foot">
+        <Signal count={d.resultCount} />
+        <Link className="hw-go" href={`/hardware/${d.slug}`} aria-label={`View ${d.name}`}>View hardware →</Link>
+      </div>
     </li>
   );
 }
 
-function SimpleSystemRow({ c }: { c: catalog.ConfigurationDTO }) {
+function SystemCard({ c }: { c: catalog.ConfigurationDTO }) {
   const u = systemUsableGb(c);
+  const maxB = maxParamsAtQ4(u.gb);
+  const icon = c.formFactor === 'laptop' ? 'laptop' : c.formFactor === 'mini_pc' ? 'minipc' : c.formFactor === 'server' ? 'server' : 'desktop';
+  const name = c.name.replace(/\s*\(.*\)$/, '');
   return (
-    <li className="simple-row">
-      <div>
-        <h3 className="name"><Link href={`/hardware/systems/${c.slug}`}>{c.name.replace(/\s*\(.*\)$/, '')}</Link></h3>
-        <p className="simple-desc">{systemSimpleSentence(c)}</p>
+    <li className="hw-card">
+      <HardwareMedia src={c.imageUrl} credit={c.imageCredit} name={c.name} icon={icon} />
+      <div className="hw-id">
+        <h3 className="hw-name"><Link href={`/hardware/systems/${c.slug}`}>{name}</Link></h3>
+        <div className="hw-meta">{systemClassLabel(c)} · {c.components.map((x) => `${x.count > 1 ? `${x.count}× ` : ''}${shortName(x.name).replace(/\s*\(.*\)$/, '')}`).join(' + ')}</div>
+        <p className="hw-pitch">{systemPositioning(u.where, maxB, gpuCount(c))}</p>
       </div>
-      <ul className="facts-plain">
-        <li className="t-mem"><span><b>~{Math.floor(u.gb)} GB</b> <span className="soft">usable for models</span></span></li>
-        {u.where === 'ram' ? <li className="t-limited"><span>No graphics card — slower replies</span></li> : <li className="t-good"><span>Runs models {u.where === 'unified' ? 'in shared memory' : 'on the graphics card'}</span></li>}
-        {c.approxPriceUsd ? <li className="t-neutral"><span>About ${c.approxPriceUsd.toLocaleString('en-US')}</span></li> : null}
-        {c.resultCount ? <li className="t-community"><span>{c.resultCount} measured results</span></li> : null}
-      </ul>
-      <Link className="simple-go" href={`/run?system=${c.slug}`}>What can it run? →</Link>
+      <dl className="hw-specs">
+        <div>
+          <dt>Memory</dt>
+          <dd>{c.unifiedMemoryGb ? <><b>{c.unifiedMemoryGb} GB</b>unified</> : c.acceleratorMemoryGb ? <><b>{c.acceleratorMemoryGb} GB</b>VRAM · {c.systemRamGb} GB RAM</> : <><b>{c.systemRamGb} GB</b>RAM, no GPU</>}</dd>
+        </div>
+        <div>
+          <dt>Capacity</dt>
+          <dd><b>{roughParams(maxB)}</b>{u.where === 'ram' ? 'models at 4-bit, slowly' : 'models at 4-bit'}</dd>
+        </div>
+        <PriceSpec quote={systemPrice(c)} none="No estimate" />
+      </dl>
+      <div className="hw-foot">
+        <Signal count={c.resultCount} />
+        <Link className="hw-go" href={`/run?system=${c.slug}`} aria-label={`What can ${name} run?`}>What can it run? →</Link>
+      </div>
     </li>
   );
 }
