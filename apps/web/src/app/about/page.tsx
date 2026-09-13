@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: 'Principles' };
 export default function AboutPage() {
   return (
     <div style={{ maxWidth: 760 }}>
-      <PageHead eyebrow="About" title="How Mutinai handles data" lede="Mutinai is an open community and intelligence platform for the open-AI ecosystem. These principles are built into the architecture, not layered on afterwards." />
+      <PageHead eyebrow="About" title="How Mutinai handles data" lede="Mutinai is an open community and intelligence platform for the open model ecosystem. These principles are built into the architecture, not layered on afterwards." />
       <Section title="Provenance" id="provenance">
         <p>Factual data is attributed to where it came from. Every ingested item is stored as an immutable, content-addressed snapshot; each field value records which source asserted it and when, and higher-priority sources take precedence without erasing what other sources said.</p>
         <p>Community submissions are kept separate from source-reported results and are labelled as such. Measured and estimated numbers are always visually distinct.</p>

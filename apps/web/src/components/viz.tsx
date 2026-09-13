@@ -35,7 +35,7 @@ export function EntityMark({ type, word, label }: { type: EntityType; word?: boo
 export function Avatar({ handle, size }: { handle: string; size?: 'lg' }) {
   const hue = [...handle].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7);
   return (
-    <span className={`avatar${size === 'lg' ? ' lg' : ''}`} style={{ background: `hsl(${hue} 45% 70%)` }} aria-hidden="true">
+    <span className={`avatar${size === 'lg' ? ' lg' : ''}`} style={{ background: `hsl(${hue} 28% 68%)` }} aria-hidden="true">
       {handle.slice(0, 1).toUpperCase()}
     </span>
   );

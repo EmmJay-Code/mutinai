@@ -56,3 +56,24 @@ export function systemSentence(c: catalog.ConfigurationDTO): string {
 export function pricePerGb(priceUsd: number | null | undefined, memoryGb: number | null | undefined): number | null {
   return priceUsd && memoryGb ? Math.round(priceUsd / memoryGb) : null;
 }
+
+/** Plain-language device description for the Simple view: no memory types, bandwidth units or bit widths. */
+export function deviceSimpleSentence(d: catalog.DeviceDTO): string {
+  if (d.memoryKind === 'dedicated' && d.memoryGb) {
+    const max = maxParamsAtQ4(d.memoryGb * compat.COMPAT_CONSTANTS.dedicatedUsableFraction);
+    return `${d.deviceKind === 'accelerator' ? 'Datacenter card' : 'Graphics card'} with ${d.memoryGb} GB of its own memory — enough for models up to ${roughParams(max)} parameters using a typical compressed download.`;
+  }
+  if (d.memoryKind === 'unified') {
+    return 'Shares one large pool of memory between processor and graphics, so big models fit. How big depends on the memory the system was bought with.';
+  }
+  return 'A processor that runs models from system RAM, without a graphics card. Slower, but not limited by graphics memory.';
+}
+
+export function systemSimpleSentence(c: catalog.ConfigurationDTO): string {
+  const { gb, where } = systemUsableGb(c);
+  const gpus = c.components.reduce((n, x) => n + (x.memoryKind === 'dedicated' ? x.count : 0), 0);
+  const place = where === 'ram' ? 'on the processor alone — expect slow replies' : where === 'unified' ? 'in its shared memory' : `entirely on its graphics card${gpus > 1 ? 's' : ''}`;
+  return where === 'ram'
+    ? `Holds models up to ${roughParams(maxParamsAtQ4(gb))} parameters ${place}. Best for smaller models.`
+    : `Runs models up to ${roughParams(maxParamsAtQ4(gb))} parameters ${place}, using a typical compressed download.`;
+}

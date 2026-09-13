@@ -5,6 +5,7 @@ import { RATING_DIMENSIONS, isModerator } from '@mutinai/domain';
 import { revalidatePath } from 'next/cache';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { INFO_MODE_COOKIE } from '@/lib/info-mode';
 import { devLoginEnabled, getSession, getViewer, SESSION_COOKIE } from '@/lib/session';
 
 const str = (fd: FormData, key: string) => {
@@ -180,4 +181,11 @@ export async function deleteMyAccount(formData: FormData) {
   await identity.deleteAccount(getDb(), session.profile.id);
   (await cookies()).delete(SESSION_COOKIE);
   redirect('/?deleted=1');
+}
+
+/** Remembers the directory presentation for this browser. Not personal data; works signed out. */
+export async function setInfoMode(formData: FormData) {
+  const mode = str(formData, 'mode') === 'technical' ? 'technical' : 'simple';
+  (await cookies()).set(INFO_MODE_COOKIE, mode, { sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 365 });
+  redirect(safeReturn(str(formData, 'returnTo')));
 }

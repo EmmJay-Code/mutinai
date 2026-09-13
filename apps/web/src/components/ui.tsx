@@ -206,13 +206,13 @@ export function Visibility({ visibility, status, verification }: { visibility?: 
   );
 }
 
-/** Plain-language license marker: filled = open, half = restricted. */
+/** Plain-language license marker: filled = permissive, half = restricted, ring = non-commercial. */
 export function LicenseShort({ commercialUse, name }: { commercialUse: string | null | undefined; name?: string }) {
   if (!commercialUse) return <span className="lic"><i aria-hidden="true" />License unknown</span>;
-  const open = commercialUse === 'allowed';
+  const kind = commercialUse === 'allowed' ? 'open' : commercialUse === 'prohibited' ? 'noncommercial' : 'restricted';
   return (
-    <span className={`lic ${open ? 'open' : 'restricted'}`} title={name}>
-      <i aria-hidden="true" />{open ? 'Open' : 'Restricted'}
+    <span className={`lic ${kind}`} title={name}>
+      <i aria-hidden="true" />{kind === 'open' ? 'Permissive' : kind === 'noncommercial' ? 'Non-commercial' : 'Restricted'}
     </span>
   );
 }

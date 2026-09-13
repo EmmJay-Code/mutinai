@@ -71,7 +71,7 @@ export default function LearnPage() {
       <div className="page-head">
         <div>
           <div className="eyebrow">Learn</div>
-          <h1>Open AI, explained as you go.</h1>
+          <h1>Open models, explained as you go.</h1>
           <p className="lede">Four short paths — just enough to make sense of what you’re looking at, then straight to the real data.</p>
         </div>
       </div>

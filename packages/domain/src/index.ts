@@ -2,6 +2,7 @@ export * from './ontology';
 export * from './privacy';
 export * from './ratings';
 export * from './profile';
+export * from './discovery';
 export * as compat from './compat';
 export type {
   ArtifactSpec,

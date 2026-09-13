@@ -1,6 +1,6 @@
 # Mutinai
 
-An open community and intelligence platform for the open-AI ecosystem: open models and their variants and
+An open community and intelligence platform for the open model ecosystem: open-weight models and their variants and
 quantizations, the hardware they run on, runtimes and tools, benchmarks, events, and community results and reviews.
 
 This repository is the **foundation build**: a coherent, tested, locally runnable system with realistic seeded

@@ -1,6 +1,6 @@
 # Mutinai visual direction
 
-Status: accepted · 2026-09-12. Prototypes: [`directions/`](./directions) (serve the repo root statically, e.g.
+Status: accepted · 2026-09-12 · revised 2026-09-12 (information modes, discovery by intent, cool colour system). Prototypes: [`directions/`](./directions) (serve the repo root statically, e.g.
 `python3 -m http.server 3200`, then open `/docs/design/directions/a-observatory.html` etc.). All three use the same
 seeded data and the same surfaces: Discover opening, Happening now, a Models directory section and a model summary.
 
@@ -27,7 +27,7 @@ Editorial broadsheet. Source Serif 4 (optical sizes) for headlines and names, Sc
 with vermilion; dateline, double rules, column rules, small-caps kickers ("● MODEL RELEASE"); typographic charts
 (thin bar rules, dot plots, standings table).
 
-- + Most distinctive and calm; typography carries identity; the front page genuinely feels like "open AI today"; entity kickers work without colour.
+- + Most distinctive and calm; typography carries identity; the front page genuinely feels like "open models today"; entity kickers work without colour.
 - − Directory rows read like articles rather than a tool; hairline charts too faint to scan; vermilion ≈ the old coral.
 
 ### C · Field Guide
@@ -67,21 +67,44 @@ system combines compatible parts:
 - **Data:** JetBrains Mono, tabular — numbers, sizes, quantization names, versions. Never for prose or headings.
 
 ### Colour (dark primary, light supported)
-- Warm ink surfaces in three tonal steps (`--bg`, `--raised`, `--sunken`) rather than borders everywhere.
-- Text hierarchy: `--ink`, `--ink-2`, `--muted`, `--faint`.
-- **Primary accent: saffron** — brand mark, primary actions, current navigation, the one highlight per visual.
-- Entity hues are desaturated and always paired with a shape and a word.
-- Status colours (fit, verification) are paired with a glyph so colour is never the only carrier.
+The first synthesis used saffron on warm ink; it read brown and retro. Revised to a cool dark system:
+- Near-black base (`--bg` ≈ #080B0D) with cool charcoal/slate surfaces (`--raised`, `--sunken`, `--hover`), barely saturated.
+- Text hierarchy in cool off-white and slate: `--ink`, `--ink-2`, `--muted`, `--faint`.
+- **Primary accent: electric mint** (`--accent`) — brand mark, selected state, current navigation, the lead story rule,
+  activity and trend marks, primary actions. Used as a signal, never as decoration.
+- **Secondary: cool blue** (`--data`) — data marks (capability profile, model glyph), "new" badges, intent explanations.
+- Semantic colours (fit, verification, license state) only where they carry meaning, always paired with a shape.
+- Restraint rules: no glows, neon borders, gradients or terminal green-on-black. Most of the interface stays neutral;
+  structured data provides the visual interest. Light mode mirrors the same roles with darker mint/blue for contrast.
 
 ### Entity language
 | Entity | Glyph | Word | Hue |
 |---|---|---|---|
-| Model / variant / download | ● filled circle (◐ variant, ○ download) | Model | saffron-tinted |
-| Hardware / system | ■ square (□ system) | Hardware | teal |
-| Tool / runtime | ▲ triangle | Tool | green |
-| Benchmark | ◆ diamond | Benchmark | lilac |
+| Model / variant / download | ● filled circle (◐ variant, ○ download) | Model | data blue |
+| Hardware / system | ■ square (□ system) | Hardware | slate cyan |
+| Tool / runtime | ▲ triangle | Tool | lavender |
+| Benchmark | ◆ diamond | Benchmark | rose |
 | Event / release | ▬ bar | Release, Launch… | neutral |
 | Member / contribution | initial avatar | @handle | per-handle hue |
+
+### Progressive information resolution
+Beginners organise the world around questions; experts around entities and data. Both are first-class, so density is
+not uniform — it is chosen.
+
+- **Simple | Technical** switch on directories (Models, Hardware), remembered per browser in the `mutinai_info` cookie
+  (a plain form + server action, so it works without JavaScript). Default: Simple.
+- **Simple** shows decision-relevant statements with no glyphs to decode: what the model is for, approximate memory and
+  a familiar machine it fits, license openness in words (permissive / restricted / non-commercial — never a bare
+  "open", and never "open source" for open-weight models), reach across reference systems, community signal.
+- **Technical** keeps the compact index: parameters and active parameters, architecture, context, capability profile,
+  memory scale, systems meter, license state, activity, compare controls; hardware bandwidth, 4-bit capacity, $/GB.
+- **Intent before catalog.** Models open with "What are you looking for?" (Coding, Run locally, Reasoning, Vision,
+  Agents & tool use, Fast, Small, Permissive licenses) and a three-list shortlist; Hardware opens with goals
+  (first machine, GPU upgrade, Apple/unified, workstation, server/multi-GPU). Each path filters, ranks and explains.
+  In Technical mode these collapse into chips and the catalog starts immediately.
+- **Hardware is grouped by buying context** (graphics cards, Apple silicon & unified memory, complete systems,
+  server & multi-GPU); manufacturer remains a filter.
+- Intent definitions and plain-language phrasing are pure, tested functions in `packages/domain/src/discovery.ts`.
 
 ### Visualisations
 Capability profile (four bars: coding, reasoning, knowledge, instruction — relative to the best open result in the

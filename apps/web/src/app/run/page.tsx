@@ -201,7 +201,7 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
               </select>
             </label>
             <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36 }}>
-              <input type="checkbox" name="commercial" value="1" defaultChecked={commercialOnly} /> <span style={{ color: 'var(--ink-2)' }}>Open licenses only</span>
+              <input type="checkbox" name="commercial" value="1" defaultChecked={commercialOnly} /> <span style={{ color: 'var(--ink-2)' }}>Permissive licenses only</span>
             </label>
             <button className="btn" type="submit">Update</button>
           </form>
@@ -292,7 +292,7 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
             <Disclosure title="How this is calculated" meta="Memory, fit and speed estimates">
               <div className="legend" style={{ marginBottom: 'var(--s3)' }} aria-hidden="true">
                 <span><i style={{ background: 'var(--ink-2)' }} />model weights</span>
-                <span><i style={{ background: 'var(--community)' }} />conversation cache</span>
+                <span><i style={{ background: 'var(--e-hardware)' }} />conversation cache</span>
                 <span><i style={{ background: 'var(--faint)' }} />overhead</span>
                 <span><i style={{ background: 'var(--accent)', width: 2 }} />usable memory</span>
               </div>

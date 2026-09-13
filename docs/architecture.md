@@ -1,6 +1,6 @@
 # Mutinai architecture
 
-Mutinai is an open community and intelligence platform for the open-AI ecosystem.
+Mutinai is an open community and intelligence platform for the open model ecosystem.
 This document describes the foundation. Individual consequential decisions are
 recorded as ADRs in [`docs/adr`](./adr).
 

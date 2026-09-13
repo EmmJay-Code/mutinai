@@ -6,7 +6,7 @@ import { signOut } from './actions';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: { default: 'Mutinai — everything happening in open AI', template: '%s · Mutinai' },
+  title: { default: 'Mutinai — the open model ecosystem, in one place', template: '%s · Mutinai' },
   description: 'Open models, the hardware they run on, the tools around them, and the people building with them.',
 };
 
@@ -54,7 +54,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <HashOpener />
         <footer className="site-footer">
           <div className="wrap">
-            <span>Mutinai — an open community for the open-AI ecosystem.</span>
+            <span>Mutinai — an open community for the open model ecosystem.</span>
             <nav aria-label="Footer">
               <Link href="/new">What’s new</Link>
               <Link href="/search">Search</Link>

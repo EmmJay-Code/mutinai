@@ -17,7 +17,7 @@ export default async function WhatsNewPage() {
   }, {});
   return (
     <>
-      <PageHead eyebrow="Timeline" title="What’s new in open AI" lede="Releases, launches and announcements across models, hardware and tools — each linked to the things it affects." />
+      <PageHead eyebrow="Timeline" title="What’s new in open models" lede="Releases, launches and announcements across models, hardware and tools — each linked to the things it affects." />
       {Object.entries(byYear).sort(([a], [b]) => Number(b) - Number(a)).map(([year, list]) => (
         <section key={year} className="section-tight" aria-labelledby={`y-${year}`}>
           <div className="section-head"><h2 id={`y-${year}`}>{year} <span className="muted">{list.length}</span></h2></div>
