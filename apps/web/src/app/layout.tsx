@@ -27,7 +27,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <div className="header-tools">
               <form className="header-search" action="/search" role="search">
                 <label className="sr-only" htmlFor="site-search">Search</label>
-                <input id="site-search" type="search" name="q" placeholder="Search" autoComplete="off" />
+                <input id="site-search" type="search" name="q" placeholder="Search models, hardware, tools" autoComplete="off" />
               </form>
               <RunLink />
               <div className="account-link">
@@ -46,7 +46,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           </div>
         </header>
         <div className="data-notice" role="note">
-          <div className="wrap">Foundation build · figures are illustrative fixture data, attributed to their source</div>
+          <div className="wrap">Foundation build · figures are illustrative fixture data, attributed to their source · data to May 2025</div>
         </div>
         <main id="main">
           <div className="wrap">{children}</div>

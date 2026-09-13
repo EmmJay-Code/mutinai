@@ -69,29 +69,33 @@ export default function LearnPage() {
   return (
     <>
       <div className="page-head">
-        <div className="eyebrow">Learn</div>
-        <h1>Open AI, explained as you go.</h1>
-        <p className="lede">Four short paths. Each explains just enough to make sense of what you’re looking at, then points you to the real data.</p>
+        <div>
+          <div className="eyebrow">Learn</div>
+          <h1>Open AI, explained as you go.</h1>
+          <p className="lede">Four short paths — just enough to make sense of what you’re looking at, then straight to the real data.</p>
+        </div>
       </div>
-      <ol className="paths cols-4" aria-label="Guides">
+      <ol className="paths" aria-label="Guides">
         {PATHS.map((p) => (
           <li key={p.id}><a href={`#${p.id}`}><strong>{p.title}</strong><span>{p.lede}</span></a></li>
         ))}
       </ol>
       {PATHS.map((p, i) => (
-        <section key={p.id} id={p.id} className="entity-section" aria-labelledby={`${p.id}-h`}>
+        <section key={p.id} id={p.id} className="entity-section" aria-labelledby={`${p.id}-h`} style={{ borderTop: '1px solid var(--line-strong)', paddingTop: 16, marginTop: 28 }}>
           <div className="split-wide">
             <div className="prose">
               <div className="step">Path 0{i + 1}</div>
-              <h2 id={`${p.id}-h`} style={{ fontSize: 'clamp(28px, 3.5vw, 40px)' }}>{p.title}</h2>
-              <p className="lede" style={{ margin: 'var(--s3) 0 var(--s5)' }}>{p.lede}</p>
+              <h2 id={`${p.id}-h`} style={{ font: '600 26px/1.15 var(--serif)', letterSpacing: '-0.02em' }}>{p.title}</h2>
+              <p className="lede" style={{ margin: '4px 0 12px' }}>{p.lede}</p>
               {p.body.map((para, j) => <p key={j}>{para}</p>)}
             </div>
             <aside>
+              <div className="surface">
               <div className="subhead" style={{ marginTop: 0 }}>Go deeper</div>
               <ul className="list-plain">
                 {p.next.map((n) => <li key={n.href}><Link href={n.href}>{n.label} →</Link></li>)}
               </ul>
+              </div>
             </aside>
           </div>
         </section>

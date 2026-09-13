@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PerformanceTable, RatingSummary, ReviewList, SubmissionList } from '@/components/results';
 import { Crumbs, Empty, EntitySection, FitBadge, Glance, SectionNav, Speed } from '@/components/ui';
+import { EntityMark, MemoryScale, ParamsReach, SystemsMeter } from '@/components/viz';
 import { formatGb, formatParams, humanize } from '@/lib/format';
-import { systemSentence } from '@/lib/hardware';
+import { maxParamsAtQ4, systemSentence, systemUsableGb } from '@/lib/hardware';
 import { getViewer } from '@/lib/session';
 
 type Params = Promise<{ slug: string }>;
@@ -36,63 +37,73 @@ export default async function SystemPage({ params }: { params: Params }) {
     community.listSubmissions(db, { configurationId: system.id }, viewer),
     hw ? compatQueries.runCompatibility(db, hw, { contextLength: 8192 }) : Promise.resolve([]),
   ]);
-  const top = results.filter((p) => p.recommended && p.recommended.result.placement !== 'hybrid').sort((a, b) => b.paramsTotal - a.paramsTotal).slice(0, 8);
-  const runnable = results.filter((r) => r.recommended).length;
+  const top = results.filter((p) => p.recommended && p.recommended.result.placement !== 'hybrid').sort((a, b) => b.paramsTotal - a.paramsTotal);
+  const well = results.filter((r) => r.recommended?.result.placement === 'accelerator' || r.recommended?.result.placement === 'cpu').length;
+  const slow = results.filter((r) => r.recommended?.result.placement === 'hybrid').length;
+  const usable = systemUsableGb(system);
 
   return (
     <>
       <Crumbs crumbs={[{ href: '/hardware', label: 'Hardware' }, { href: '/hardware?view=systems', label: 'Systems' }]} />
-      <header className="entity-hero">
-        <div className="eyebrow">Reference system · {humanize(system.formFactor)}</div>
-        <h1>{system.name}</h1>
-        <p className="lede">{systemSentence(system)} {system.summary}</p>
-        <Glance
-          items={[
-            [system.unifiedMemoryGb ? 'Unified memory' : 'GPU memory', formatGb(system.acceleratorMemoryGb || null)],
-            ['System RAM', system.systemRamGb ? formatGb(system.systemRamGb) : 'Shared'],
-            ['Runs', `${runnable} of ${results.length}`, 'model variants at 8K'],
-            ['Price', system.approxPriceUsd ? `~$${system.approxPriceUsd.toLocaleString('en-US')}` : '—'],
-          ]}
-        />
-        <div className="page-head-actions">
-          <Link className="btn btn-primary" href={`/run?system=${system.slug}`}>Full compatibility list</Link>
-          <Link className="btn" href={`/contribute/benchmark?system=${system.slug}`}>Submit a run</Link>
-          <Link className="btn" href={`/contribute/review?entity=hardware_configuration:${system.slug}&returnTo=/hardware/systems/${system.slug}`}>Review</Link>
-        </div>
-      </header>
+      <div className="entity-top">
+        <header className="entity-hero">
+          <div className="kicker"><EntityMark type="system" word /> · {humanize(system.formFactor)}</div>
+          <h1>{system.name}</h1>
+          <p className="lede">{systemSentence(system)} {system.summary}</p>
+          <Glance
+            items={[
+              [system.unifiedMemoryGb ? 'Unified memory' : 'GPU memory', formatGb(system.acceleratorMemoryGb || null)],
+              ['System RAM', system.systemRamGb ? formatGb(system.systemRamGb) : 'Shared'],
+              ['Runs', `${well} of ${results.length}`, 'model variants, 8K'],
+              ['Price', system.approxPriceUsd ? `~$${system.approxPriceUsd.toLocaleString('en-US')}` : '—'],
+            ]}
+          />
+          <div className="page-head-actions tight">
+            <Link className="btn btn-primary" href={`/run?system=${system.slug}`}>Full compatibility</Link>
+            <Link className="btn" href={`/contribute/benchmark?system=${system.slug}`}>Submit a run</Link>
+            <Link className="btn" href={`/contribute/review?entity=hardware_configuration:${system.slug}&returnTo=/hardware/systems/${system.slug}`}>Review</Link>
+          </div>
+        </header>
+        <aside className="verdict" aria-label="At a glance">
+          <div>
+            <h2>Capacity <span><SystemsMeter runsWell={well} slow={slow} of={results.length} /></span></h2>
+            <div style={{ display: 'grid', gap: 10, marginTop: 8 }}>
+              <ParamsReach maxB={maxParamsAtQ4(usable.gb)} label="Holds at 4-bit" />
+              <MemoryScale gb={usable.gb} label={`Usable ${usable.where === 'ram' ? 'RAM' : usable.where === 'unified' ? 'unified memory' : 'GPU memory'}`} />
+            </div>
+            <p className="small muted" style={{ margin: '6px 0 0' }}>Segments: model variants that run well, slowly, or not at all.</p>
+          </div>
+          <div>
+            <h2>Owners say</h2>
+            <div style={{ marginTop: 4 }}><RatingSummary aggregates={aggregates} /></div>
+          </div>
+        </aside>
+      </div>
 
       <SectionNav items={SECTIONS} />
 
-      <EntitySection id="runs" title="What it runs" intro="The largest models that run without offloading, at 8K context.">
+      <EntitySection id="runs" title="What it runs" intro="Largest models without offloading, 8K context." more={<Link href={`/run?system=${system.slug}`}>Everything →</Link>}>
         {top.length === 0 ? <Empty>No compatible models found.</Empty> : (
-          <ul className="pick-list" style={{ maxWidth: 760 }}>
-            {top.map((p) => (
-              <li key={p.variantSlug}>
+          <ul className="pick-list" style={{ columns: 2, columnGap: 28 }}>
+            {top.slice(0, 10).map((p) => (
+              <li key={p.variantSlug} style={{ breakInside: 'avoid' }}>
+                <EntityMark type="variant" />
                 <div>
                   <Link className="name" href={`/models/${p.modelSlug}#${p.variantSlug}`}>{p.variantName}</Link>
-                  <div className="small muted">{formatParams(p.paramsTotal)} · {p.recommended!.row.schemeName} via {p.recommended!.runtime.name}</div>
+                  <div className="small muted"><span className="num">{formatParams(p.paramsTotal)}</span> · <span className="mono">{p.recommended!.row.schemeName}</span> via {p.recommended!.runtime.name}</div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <FitBadge fit={p.recommended!.result.fit} />
-                  <div className="small"><Speed speed={p.recommended!.result.speed} /></div>
-                </div>
+                <div style={{ textAlign: 'right' }}><FitBadge fit={p.recommended!.result.fit} /><div className="small"><Speed speed={p.recommended!.result.speed} /></div></div>
               </li>
             ))}
           </ul>
         )}
-        {aggregates.length > 0 && (
-          <div style={{ marginTop: 'var(--s6)', maxWidth: 480 }}>
-            <h3 className="subhead">What owners say</h3>
-            <RatingSummary aggregates={aggregates} />
-          </div>
-        )}
       </EntitySection>
 
       <EntitySection id="components" title="Components">
-        <ul className="list-plain" style={{ maxWidth: 760 }}>
+        <ul className="list-plain">
           {system.components.map((c) => (
             <li key={c.slug}>
-              <span className="num">{c.count}×</span> <Link href={`/hardware/${c.slug}`}>{c.name}</Link>{' '}
+              <span className="num">{c.count}×</span> <Link href={`/hardware/${c.slug}`} style={{ fontWeight: 600 }}><EntityMark type="hardware" /> {c.name}</Link>{' '}
               <span className="small muted">{humanize(c.deviceKind)}{c.memoryGb ? ` · ${formatGb(c.memoryGb)}` : ''}</span>
             </li>
           ))}
@@ -104,13 +115,10 @@ export default async function SystemPage({ params }: { params: Params }) {
         <PerformanceTable results={system.performanceResults} showModel showSystem={false} />
       </EntitySection>
 
-      <EntitySection id="community-runs" title="Community results">
-        <SubmissionList submissions={submissions} />
-      </EntitySection>
-
-      <EntitySection id="reviews" title="Reviews">
-        <ReviewList reviews={reviews} />
-      </EntitySection>
+      <div className="split">
+        <EntitySection id="community-runs" title="Community results"><SubmissionList submissions={submissions} /></EntitySection>
+        <EntitySection id="reviews" title="Reviews"><ReviewList reviews={reviews} /></EntitySection>
+      </div>
     </>
   );
 }

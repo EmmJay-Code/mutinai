@@ -51,3 +51,8 @@ export function systemSentence(c: catalog.ConfigurationDTO): string {
   const place = where === 'ram' ? 'in system RAM (CPU only)' : where === 'unified' ? 'in unified memory' : 'entirely on the GPU';
   return `Runs models up to ${roughParams(maxParamsAtQ4(gb))} parameters at 4-bit ${place}.`;
 }
+
+/** Price per GB of accelerator memory, when both are known. */
+export function pricePerGb(priceUsd: number | null | undefined, memoryGb: number | null | undefined): number | null {
+  return priceUsd && memoryGb ? Math.round(priceUsd / memoryGb) : null;
+}

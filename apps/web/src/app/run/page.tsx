@@ -1,8 +1,10 @@
-import { community, compatQueries, getDb } from '@mutinai/db';
+import { catalog, community, compatQueries, getDb } from '@mutinai/db';
 import { CAPABILITIES } from '@mutinai/domain';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Disclosure, Empty, FitBadge, Speed } from '@/components/ui';
+import { EntityMark, MemoryScale, ParamsReach } from '@/components/viz';
+import { maxParamsAtQ4, systemUsableGb } from '@/lib/hardware';
 import { CAPABILITY_LABEL, FORM_FACTOR_LABEL, formatBytes, formatContext, formatParams, humanize, numberParam, searchParam } from '@/lib/format';
 import { getViewer } from '@/lib/session';
 
@@ -45,7 +47,7 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const db = getDb();
   const viewer = await getViewer();
-  const [picker, ownConfigs] = await Promise.all([compatQueries.listHardwarePickerOptions(db), community.listOwnHardwareConfigs(db, viewer)]);
+  const [picker, ownConfigs, configurations] = await Promise.all([compatQueries.listHardwarePickerOptions(db), community.listOwnHardwareConfigs(db, viewer), catalog.listConfigurations(db)]);
 
   const explicitMode = searchParam(sp, 'mode');
   const mode = explicitMode ?? (searchParam(sp, 'mine') ? 'mine' : searchParam(sp, 'd0') ? 'custom' : searchParam(sp, 'system') ? 'system' : null);
@@ -144,27 +146,39 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
 
   return (
     <>
-      <div className="discover-head">
-        <div className="eyebrow">What can I run?</div>
-        <h1>{hardware ? hardware.label : 'Start from the machine you have.'}</h1>
-        {!hardware && (
-          <p className="lede" style={{ marginTop: 'var(--s3)' }}>
-            Pick the setup closest to yours. For every model we’ll recommend which version to download, which software to run it with, how much memory it needs and roughly how fast it will be.
-          </p>
-        )}
+      <div className="dir-head">
+        <h1><span className="glyph g-system" aria-hidden="true" /> {hardware ? hardware.label : 'What can I run?'}</h1>
+        {hardware
+          ? <span className="count">What can I run? · {formatContext(ctx)} context</span>
+          : <span className="count">Start from the machine you have — we recommend a download, a runtime, and show memory and speed.</span>}
       </div>
 
       {!hardware ? (
         <>
-          <div className="step">Step 1 · Choose hardware</div>
+          <div className="step" style={{ marginTop: 4 }}>Choose hardware</div>
           {mode === 'mine' && <div className="alert alert-error" role="alert">That system isn’t available.</div>}
           {picker_}
+          <section className="section" aria-labelledby="systems-glance">
+            <div className="section-head"><h2 id="systems-glance"><span className="glyph g-system" aria-hidden="true" /> Reference systems at a glance</h2><p>Usable memory and the largest dense model each holds at 4-bit.</p></div>
+            <ul className="list-plain" style={{ columns: 2, columnGap: 32 }}>
+              {[...configurations].sort((a, b) => systemUsableGb(b).gb - systemUsableGb(a).gb).map((c) => {
+                const u = systemUsableGb(c);
+                return (
+                  <li key={c.slug} style={{ breakInside: 'avoid', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 130px 130px', gap: 14, alignItems: 'center' }}>
+                    <Link href={keep({ mode: 'system', system: c.slug })} style={{ fontWeight: 600 }}>{c.name.replace(/\s*\(.*\)$/, '')}<span className="small muted" style={{ display: 'block', fontWeight: 400 }}>{humanize(c.formFactor)}</span></Link>
+                    <MemoryScale gb={u.gb} label={u.where === 'ram' ? 'RAM' : u.where === 'unified' ? 'unified' : 'GPU'} />
+                    <ParamsReach maxB={maxParamsAtQ4(u.gb)} label="holds" />
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         </>
       ) : (
         <>
           <Disclosure title="Change hardware" meta={`Currently: ${hardware.label}`}>{picker_}</Disclosure>
 
-          <form action="/run" className="filters" style={{ marginTop: 'var(--s5)' }}>
+          <form action="/run" className="filters" style={{ marginTop: 12 }}>
             {Object.entries(selectionParams).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
             <label className="field">
               <span>How much text</span>
@@ -193,11 +207,12 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
           </form>
 
           <div className="run-summary" aria-live="polite">
-            <div><b>{accel.length + cpu.length}</b><span>run well</span></div>
-            <div><b>{offload.length}</b><span>run with offload</span></div>
-            <div><b>{wontRun.length}</b><span>too large</span></div>
+            <div><span className="fit fit-full" /><b>{accel.length + cpu.length}</b><span>run well</span></div>
+            <div><span className="fit fit-offload" /><b>{offload.length}</b><span>with offload</span></div>
+            <div><span className="fit fit-none" /><b>{wontRun.length}</b><span>too large</span></div>
+            <div style={{ flex: '1 1 260px', minWidth: 200 }}><MemoryScale gb={hardware.spec.unifiedMemoryGb ? hardware.spec.unifiedMemoryGb * 0.75 : hardware.spec.components.reduce((a, c) => a + (c.device.memoryKind === 'dedicated' ? (c.device.memoryGb ?? 0) * c.count * 0.95 : 0), 0) || hardware.spec.systemRamGb * 0.8} label="Usable memory" /></div>
           </div>
-          <p className="small muted" style={{ marginTop: 'calc(-1 * var(--s3))' }}>
+          <p className="small muted" style={{ margin: 0 }}>
             {hardware.source === 'reference' && hardware.slug
               ? <>Speeds marked measured come from reference results and verified community runs on <Link href={`/hardware/systems/${hardware.slug}`}>this exact system</Link>; others are estimates.</>
               : 'Custom and personal systems use estimates unless verified runs exist for the same configuration.'}
@@ -207,7 +222,7 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
             <section key={tier.key} className="section-tight" aria-labelledby={`tier-${tier.key}`}>
               <div className="section-head">
                 <div>
-                  <h2 id={`tier-${tier.key}`}>{tier.title} <span className="muted num" style={{ fontSize: 16 }}>{tier.rows.length}</span></h2>
+                  <h2 id={`tier-${tier.key}`}><span className={`fit fit-${tier.key === 'offload' ? 'offload' : 'full'}`} aria-hidden="true" />{tier.title} <span className="muted num">{tier.rows.length}</span></h2>
                   <p>{tier.intro}</p>
                 </div>
               </div>
@@ -222,7 +237,7 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
                       return (
                         <tr key={r.variantSlug}>
                           <td data-label="Model">
-                            <Link className="primary" href={`/models/${r.modelSlug}#${r.variantSlug}`} style={{ fontSize: 16 }}>{r.variantName}</Link>
+                            <Link className="primary" href={`/models/${r.modelSlug}#${r.variantSlug}`} style={{ font: '600 15px/1.3 var(--serif)' }}><EntityMark type="variant" /> {r.variantName}</Link>
                             <span className="sub">{r.developerName} · {formatParams(r.paramsTotal)}{r.paramsActive ? ` (${formatParams(r.paramsActive)} active)` : ''}</span>
                             {r.alternatives.length > 0 && (
                               <details className="alts">
@@ -244,7 +259,7 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
                             )}
                           </td>
                           <td data-label="Download">
-                            <Link href={`/models/${r.modelSlug}#${rec.row.artifactSlug}`}>{rec.row.schemeName}</Link> <span className="muted">via</span> <Link href={`/tools/${rec.runtime.slug}`}>{rec.runtime.name}</Link>
+                            <Link className="mono" href={`/models/${r.modelSlug}#${rec.row.artifactSlug}`}>{rec.row.schemeName}</Link> <span className="muted">via</span> <Link href={`/tools/${rec.runtime.slug}`}>{rec.runtime.name}</Link>
                             <span className="sub">{formatBytes(rec.row.sizeBytes)} · {rec.row.publisherName}</span>
                             {rec.result.fit === 'tight' && <span className="sub"><FitBadge fit="tight" /></span>}
                           </td>
@@ -261,7 +276,7 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
 
           {results.length === 0 && <Empty>No models match these options.</Empty>}
 
-          <div className="section-tight">
+          <div className="section">
             {wontRun.length > 0 && (
               <Disclosure title="Too large for this hardware" meta={`${wontRun.length} model variant${wontRun.length === 1 ? '' : 's'}`}>
                 <ul className="list-plain">

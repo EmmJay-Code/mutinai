@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Direction C · Field Guide</title>
+<link rel="stylesheet" href="/node_modules/@fontsource-variable/archivo/wdth.css" />
+<link rel="stylesheet" href="/node_modules/@fontsource-variable/jetbrains-mono/index.css" />
+<style>
+  :root {
+    --bg: #0d1113; --s1: #131a1d; --s2: #1a2327; --line: #223036; --t1: #e7eef0; --t2: #a9b8bd; --t3: #6f8288;
+    --acc: #e8a93a; --model: #e8a93a; --hw: #5fb8c9; --tool: #9bc26b; --bench: #d98bb0; --event: #7c8e94; --member: #c9a3e8;
+    --sans: 'Archivo Variable', system-ui, sans-serif; --mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; } body { margin: 0; background: var(--bg); color: var(--t1); font: 14px/1.5 var(--sans); }
+  a { color: inherit; text-decoration: none; } .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 0 26px; }
+  header { display: flex; align-items: center; gap: 20px; height: 50px; padding: 0 26px; border-bottom: 1px solid var(--line); }
+  .brand { font: 800 19px/1 var(--sans); font-stretch: 70%; text-transform: uppercase; letter-spacing: .02em; } .brand span { color: var(--acc); }
+  nav a { font-stretch: 85%; font-weight: 600; text-transform: uppercase; font-size: 12.5px; letter-spacing: .06em; color: var(--t2); margin-right: 16px; } nav a.on { color: var(--acc); }
+  .search { margin-left: auto; border: 1px solid var(--line); height: 30px; width: 280px; display: flex; align-items: center; padding: 0 10px; color: var(--t3); font-size: 13px; }
+  .run { border: 1px solid var(--acc); color: var(--acc); height: 30px; padding: 0 12px; display: flex; align-items: center; font-weight: 700; font-stretch: 85%; text-transform: uppercase; font-size: 12px; letter-spacing: .05em; }
+  .code { display: inline-grid; place-items: center; min-width: 34px; height: 18px; padding: 0 4px; font: 700 10px/1 var(--mono); letter-spacing: .04em; color: var(--bg); }
+  .c-model { background: var(--model); } .c-hardware { background: var(--hw); } .c-tool { background: var(--tool); } .c-bench { background: var(--bench); } .c-event { background: var(--event); } .c-member { background: var(--member); }
+  .opening { display: grid; grid-template-columns: 1fr 520px; gap: 30px; padding: 20px 0 16px; border-bottom: 1px solid var(--line); align-items: end; }
+  .eyebrow { font: 600 11px var(--mono); color: var(--acc); letter-spacing: .1em; }
+  h1 { font: 800 46px/0.95 var(--sans); font-stretch: 68%; text-transform: uppercase; letter-spacing: -0.005em; margin: 8px 0; }
+  .sub { color: var(--t2); margin: 0; } .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .btn { height: 32px; padding: 0 14px; border: 1px solid var(--line); display: inline-flex; align-items: center; font-weight: 700; font-stretch: 85%; text-transform: uppercase; font-size: 12px; letter-spacing: .05em; } .btn.p { background: var(--acc); color: var(--bg); border-color: var(--acc); }
+  .index { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); }
+  .ix { padding: 8px 10px; border-right: 1px solid var(--line); } .ix:last-child { border-right: 0; } .ix b { font: 600 24px/1 var(--mono); } .ix small { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--t3); margin-top: 3px; font-stretch: 85%; }
+  .cells { display: flex; gap: 2px; margin-top: 6px; } .cells i { flex: 1; height: 8px; background: var(--s2); } .cells i.on { background: var(--acc); }
+  .body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 26px; margin-top: 16px; }
+  h2 { font: 800 15px var(--sans); font-stretch: 75%; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 10px; display: flex; justify-content: space-between; } h2 span { font: 500 11px var(--mono); color: var(--t3); letter-spacing: 0; text-transform: none; }
+  .axis { position: relative; padding-left: 110px; } .axis:before { content: ''; position: absolute; left: 88px; top: 6px; bottom: 6px; width: 1px; background: var(--line); }
+  .node { position: relative; padding: 8px 0 10px; } .node .when { position: absolute; left: -110px; top: 10px; width: 72px; text-align: right; font: 11px var(--mono); color: var(--t3); }
+  .node .pin { position: absolute; left: -27px; top: 13px; width: 11px; height: 11px; background: var(--bg); border: 2px solid var(--event); } .node.model .pin { border-color: var(--model); border-radius: 50%; } .node.tool .pin { border-color: var(--tool); transform: rotate(45deg); } .node.hardware .pin { border-color: var(--hw); }
+  .node.lead .pin { width: 15px; height: 15px; left: -29px; background: var(--model); }
+  .node h3 { margin: 4px 0 2px; font-size: 16px; font-weight: 650; } .node.lead h3 { font: 800 30px/1 var(--sans); font-stretch: 72%; text-transform: uppercase; margin: 6px 0; }
+  .node p { color: var(--t2); margin: 0; max-width: 62ch; }
+  .specimen { margin-top: 10px; display: grid; grid-template-columns: repeat(4, auto) 1fr; gap: 0; border: 1px solid var(--line); }
+  .specimen > div { padding: 6px 12px; border-right: 1px solid var(--line); } .specimen small { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--t3); font-stretch: 85%; } .specimen b { font: 600 14px var(--mono); }
+  .meter { display: flex; gap: 2px; margin-top: 3px; } .meter i { width: 10px; height: 10px; background: var(--s2); } .meter i.on { background: var(--model); }
+  .rail > section { border: 1px solid var(--line); padding: 12px; margin-bottom: 12px; }
+  .lb td { padding: 4px 0; font-size: 13px; border-bottom: 1px solid var(--line); } .lb { width: 100%; border-collapse: collapse; }
+  .barc { height: 8px; background: var(--s2); position: relative; } .barc i { position: absolute; inset: 0 auto 0 0; background: var(--bench); }
+  .log { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .dir { margin-top: 22px; } .dirbar { display: flex; gap: 6px; align-items: center; padding: 8px 0; border-top: 2px solid var(--t1); }
+  .f { height: 26px; padding: 0 10px; border: 1px solid var(--line); display: inline-flex; align-items: center; font-weight: 700; font-stretch: 85%; font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--t2); } .f.on { border-color: var(--acc); color: var(--acc); }
+  table.idx { width: 100%; border-collapse: collapse; } table.idx th { text-align: left; font: 700 10.5px var(--sans); font-stretch: 80%; text-transform: uppercase; letter-spacing: .08em; color: var(--t3); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--t3); }
+  table.idx td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--line); vertical-align: middle; } table.idx .n { font-weight: 700; font-size: 15px; } table.idx .m { color: var(--t3); font-size: 12px; }
+  .memscale { position: relative; width: 170px; height: 20px; } .memscale .seg { position: absolute; top: 6px; height: 8px; background: var(--s2); } .memscale .fill { position: absolute; top: 6px; height: 8px; background: var(--model); left: 0; }
+  .memscale .tk { position: absolute; top: 3px; height: 14px; border-left: 1px solid var(--bg); }
+  .detail { margin-top: 24px; border: 1px solid var(--line); display: grid; grid-template-columns: 1.3fr 1fr 1fr; }
+  .detail > div { padding: 14px; border-right: 1px solid var(--line); } .detail > div:last-child { border-right: 0; }
+  .label { position: fixed; right: 12px; bottom: 12px; background: var(--acc); color: #111; font: 700 12px var(--mono); padding: 6px 10px; }
+</style>
+</head>
+<body>
+<header>
+  <a class="brand">Mutin<span>ai</span></a>
+  <nav><a class="on">Discover</a><a>Models</a><a>Hardware</a><a>Tools</a><a>Learn</a><a>Community</a></nav>
+  <div class="search">Search the index</div>
+  <a class="run">What can I run</a>
+</header>
+<main class="wrap">
+  <section class="opening">
+    <div>
+      <div class="eyebrow">OPEN AI / RIGHT NOW — FIELD NOTES TO 20.05.2025</div>
+      <h1>Everything happening in open AI</h1>
+      <p class="sub">Models, hardware, tools and the people building with them — indexed and sourced.</p>
+      <div class="actions"><a class="btn p">Explore what’s new</a><a class="btn">What can my hardware run</a></div>
+    </div>
+    <div class="index" id="index"></div>
+  </section>
+  <div class="body">
+    <section><h2>Happening now <span>time axis · entity shape</span></h2><div class="axis" id="axis"></div></section>
+    <aside class="rail">
+      <section><h2>Frontier line <span>GPQA Diamond</span></h2><table class="lb" id="lb"></table></section>
+      <section><h2>Field reports <span>community</span></h2><div id="log"></div></section>
+    </aside>
+  </div>
+  <section class="dir">
+    <div class="dirbar"><b style="font:800 18px var(--sans);font-stretch:72%;text-transform:uppercase;margin-right:10px">Models</b><span class="f on">All · 17</span><span class="f">Coding</span><span class="f">Reasoning</span><span class="f">Vision</span><span class="f">≤ 24 GB</span><span class="f">Open license</span></div>
+    <table class="idx"><thead><tr><th></th><th>Model</th><th>Capability</th><th>Memory · 4–256 GB log</th><th>License</th><th>Systems</th><th>Field</th></tr></thead><tbody id="models"></tbody></table>
+  </section>
+  <section class="detail" id="detail"></section>
+  <div style="height:40px"></div>
+</main>
+<div class="label">C · Field Guide</div>
+<script src="data.js"></script>
+<script>
+const P = window.PROTO, $ = (id) => document.getElementById(id);
+const CODE = { model: 'MDL', hardware: 'HW', tool: 'TOOL', event: 'EVT', bench: 'BNCH', run: 'RUN', review: 'REV' };
+const code = (e) => `<span class="code c-${e === 'run' || e === 'review' ? 'member' : e}">${CODE[e]}</span>`;
+const meter = (v) => `<div class="meter">${[20, 40, 60, 80, 100].map(t => `<i class="${v != null && v >= t - 10 ? 'on' : ''}"></i>`).join('')}</div>`;
+const mem = (gb) => `<div class="memscale">${[0, 1].map(() => '').join('')}<div class="seg" style="left:0;right:0"></div><div class="fill" style="width:${memPos(gb) * 100}%"></div>${[8, 16, 24, 48, 96].map(t => `<div class="tk" style="left:${memPos(t) * 100}%"></div>`).join('')}</div>`;
+$('index').innerHTML = P.signals.map(s => `<div class="ix"><b>${s.value}</b><small>${s.label}</small><div class="cells">${s.spark.map((v, i, a) => `<i class="${v >= Math.max(...a) * 0.6 ? 'on' : ''}"></i>`).join('')}</div></div>`).join('');
+const L = P.lead, lm = L.model;
+$('axis').innerHTML = `<div class="node model lead"><span class="when">${L.date}</span><span class="pin"></span>${code('model')} <span class="mono" style="color:var(--t3);font-size:11px">${L.kind.toUpperCase()}</span><h3>${L.title}</h3><p>${L.deck}</p>
+  <div class="specimen"><div><small>Specimen</small><b>${lm.name}</b></div><div><small>Memory</small><b>~${Math.ceil(lm.mem)} GB</b></div><div><small>Reasoning</small>${meter(lm.profile.reasoning)}</div><div><small>Coding</small>${meter(lm.profile.coding)}</div><div><small>Runs on</small><b>${lm.systems}/${lm.of}</b></div></div></div>` +
+  P.feed.map(f => `<div class="node ${f.entity}"><span class="when">${f.date}</span><span class="pin"></span>${code(f.entity)} <span class="mono" style="color:var(--t3);font-size:11px">${f.kind.toUpperCase()}</span><h3>${f.title}</h3></div>`).join('');
+const pts = [...P.movement.points].reverse();
+$('lb').innerHTML = pts.map(p => `<tr><td style="width:44px" class="mono">${p[0]}</td><td>${p[2]}</td><td style="width:90px"><div class="barc"><i style="width:${p[1]}%"></i></div></td><td class="mono" style="width:40px;text-align:right">${p[1]}</td></tr>`).join('');
+$('log').innerHTML = P.community.map(c => `<div class="log">${code(c.entity)}<div>${c.entity === 'run' ? `<b class="mono">${c.value}</b> <span style="color:var(--t3)">${c.unit}</span> — ${c.what}<br><span style="color:var(--t3);font-size:12px">${c.where} · @${c.who}</span>` : `“${c.title}”<br><span style="color:var(--t3);font-size:12px">${c.what} · @${c.who}</span>`}</div></div>`).join('');
+$('models').innerHTML = P.models.map(m => `<tr><td style="width:44px">${code('model')}</td><td><div class="n">${m.name}</div><div class="m">${m.dev} · ${m.released} · ${m.caps.join(' / ')}</div></td>
+  <td><div style="display:grid;grid-template-columns:44px auto;gap:2px 8px;font-size:10.5px;color:var(--t3);align-items:center"><span>CODE</span>${meter(m.profile.coding)}<span>REASON</span>${meter(m.profile.reasoning)}</div></td>
+  <td><div class="mono" style="font-size:12px">~${Math.ceil(m.mem)} GB</div>${mem(m.mem)}</td><td class="mono" style="font-size:12px">${m.open ? '■ OPEN' : '□ RESTRICTED'}</td><td class="mono">${m.systems}/13</td><td class="mono" style="color:var(--t2);font-size:12px">${m.runs}R · ${m.reviews}V</td></tr>`).join('');
+const D = P.model;
+$('detail').innerHTML = `<div>${code('model')} <span class="mono" style="color:var(--t3);font-size:11px">${D.release.toUpperCase()}</span><h3 style="font:800 38px/0.95 var(--sans);font-stretch:70%;text-transform:uppercase;margin:8px 0">${D.name}</h3><p style="color:var(--t2);margin:0">${D.sentence}</p>
+  <div class="specimen" style="grid-template-columns:repeat(4,1fr)">${[['Size', D.params], ['Memory', `~${Math.ceil(D.mem)} GB`], ['Context', D.ctx], ['License', D.license]].map(([k, v]) => `<div><small>${k}</small><b>${v}</b></div>`).join('')}</div></div>
+  <div><h2>Compatibility <span>${D.systems}/${D.of}</span></h2>${D.runsOn.map(([s, f]) => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line);font-size:13px"><span>${s}</span><span class="mono" style="font-size:11px;color:${f === 'full' ? 'var(--tool)' : f === 'tight' ? 'var(--acc)' : 'var(--hw)'}">${f.toUpperCase()}</span></div>`).join('')}</div>
+  <div><h2>Scores <span>/ best open</span></h2>${D.bench.map(([b, v, best]) => `<div style="display:grid;grid-template-columns:100px 1fr 40px;gap:8px;align-items:center;font-size:13px;padding:3px 0"><span>${b}</span><div class="barc"><i style="width:${v / best * 100}%"></i></div><span class="mono">${v}</span></div>`).join('')}
+  <h2 style="margin-top:12px">Lineage</h2><div class="mono" style="font-size:12px;color:var(--t2)">Base ─┬─ Instruct<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ R1 Distill (DeepSeek)</div></div>`;
+</script>
+</body>
+</html>

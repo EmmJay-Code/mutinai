@@ -2,6 +2,7 @@ import { catalog, getDb } from '@mutinai/db';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Empty, EntityLink } from '@/components/ui';
+import { EntityMark, entityTypeFor } from '@/components/viz';
 import { searchParam } from '@/lib/format';
 
 export const metadata: Metadata = { title: 'Search' };
@@ -32,17 +33,19 @@ export default async function SearchPage({ searchParams }: { searchParams: SP })
 
   return (
     <>
-      <div className="discover-head">
-        <div className="eyebrow">Search</div>
-        <h1>{q ? <>Results for “{q}”</> : 'Search Mutinai'}</h1>
-        <form className="searchbar" action="/search" role="search">
+      <div className="dir-head">
+        <h1>{q ? <>“{q}”</> : 'Search'}</h1>
+        {q && <span className="count">{hits.length} results</span>}
+        <form className="dir-search" action="/search" role="search">
           {kind && <input type="hidden" name="kind" value={kind} />}
           <label className="sr-only" htmlFor="search-q">Search</label>
           <input id="search-q" type="search" name="q" defaultValue={q} placeholder="e.g. qwen coder, 24GB GPU, llama.cpp" autoFocus />
-          <button className="btn btn-primary" type="submit">Search</button>
+          <button type="submit">Search</button>
         </form>
+      </div>
+      <div className="dir-bar">
         {q && (
-          <div className="chips quick-filters">
+          <div className="chips">
             <Link className="chip" aria-pressed={!kind} href={href()}>Everything</Link>
             {GROUPS.slice(0, 6).map(([k, label]) => <Link key={k} className="chip" aria-pressed={kind === k} href={href(k)}>{label}</Link>)}
           </div>
@@ -56,11 +59,11 @@ export default async function SearchPage({ searchParams }: { searchParams: SP })
       ) : (
         grouped.map((g) => (
           <section key={g.k} className="section-tight" aria-labelledby={`g-${g.k}`}>
-            <h2 id={`g-${g.k}`} className="subhead">{g.label} <span className="faint">{g.items.length}</span></h2>
-            <ul className="list-plain" style={{ maxWidth: 820 }}>
+            <div className="section-head"><h2 id={`g-${g.k}`}><EntityMark type={entityTypeFor(g.k)} /> {g.label} <span className="muted">{g.items.length}</span></h2></div>
+            <ul className="list-plain" style={{ columns: g.items.length > 3 ? 2 : 1, columnGap: 32 }}>
               {g.items.map((h) => (
-                <li key={`${h.kind}:${h.slug}`}>
-                  <span style={{ fontSize: 17, fontWeight: 500 }}><EntityLink entity={h} /></span>
+                <li key={`${h.kind}:${h.slug}`} style={{ breakInside: 'avoid' }}>
+                  <span style={{ font: '600 15.5px/1.3 var(--serif)' }}><EntityLink entity={h} /></span>
                   {h.summary && <div className="small muted">{h.summary}</div>}
                 </li>
               ))}

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { vote } from '@/app/actions';
 import { entityHref, formatContext, formatDate, formatGb, formatNumber, humanize } from '@/lib/format';
 import { Basis, Empty, Visibility } from './ui';
+import { Avatar } from './viz';
 
 const dimensionLabel = (key: string) => RATING_DIMENSIONS.find((d) => d.key === key)?.label ?? humanize(key);
 const GEN_KEYS = ['tg128', 'gen_tps'];
@@ -94,6 +95,7 @@ export function ReviewList({ reviews, showSubject = false, emptyText = 'No revie
         const href = entityHref(r.subject);
         return (
           <article className="review" key={r.id} id={`review-${r.id}`}>
+            <Avatar handle={r.author.handle} />
             <h3>{r.title}</h3>
             <div className="meta-line">
               <Link className="author" href={`/u/${r.author.handle}`}>@{r.author.handle}</Link>
@@ -142,10 +144,11 @@ export function SubmissionList({ submissions, showArtifact = true, emptyText = '
         const env = s.environment;
         return (
           <article className="review" key={s.id} id={`run-${s.id}`}>
-            <h3>
-              {headline && <><span className="val-measured">{formatNumber(headline.value)}</span> <span className="muted" style={{ fontWeight: 400 }}>{headline.unit} {headline.label.toLowerCase()}</span></>}
-              {showArtifact && <> · <Link href={`/models/${s.artifact.modelSlug}#${s.artifact.slug}`} style={{ textDecoration: 'none' }}>{s.artifact.variantName}</Link> <span className="muted" style={{ fontWeight: 400 }}>{s.artifact.schemeName}</span></>}
-            </h3>
+            <Avatar handle={s.submitter.handle} />
+            <div className="run-headline">
+              {headline && <>{formatNumber(headline.value)} <span className="unit">{headline.unit} {headline.label.toLowerCase()}</span></>}
+            </div>
+            {showArtifact && <div style={{ fontWeight: 600 }}><Link href={`/models/${s.artifact.modelSlug}#${s.artifact.slug}`}>{s.artifact.variantName}</Link> <span className="muted mono" style={{ fontWeight: 400 }}>{s.artifact.schemeName}</span></div>}
             <div className="meta-line">
               on <HardwareText h={s.hardware} /> · <Link href={`/tools/${s.runtime.slug}`}>{s.runtime.name}</Link>{env.runtimeVersion ? ` ${env.runtimeVersion}` : ''} · {env.backend}
             </div>

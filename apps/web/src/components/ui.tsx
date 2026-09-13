@@ -1,6 +1,7 @@
 import type { CompatResult, SpeedAssessment } from '@mutinai/domain';
 import Link from 'next/link';
-import { entityHref, formatNumber, humanize, KIND_LABEL } from '@/lib/format';
+import { entityHref, formatNumber, humanize } from '@/lib/format';
+import { EntityMark, entityTypeFor } from './viz';
 
 export function PageHead({ eyebrow, title, lede, crumbs, children }: {
   eyebrow?: string;
@@ -11,10 +12,12 @@ export function PageHead({ eyebrow, title, lede, crumbs, children }: {
 }) {
   return (
     <div className="page-head">
-      {crumbs?.length ? <Crumbs crumbs={crumbs} /> : null}
-      {eyebrow && <div className="eyebrow">{eyebrow}</div>}
-      <h1>{title}</h1>
-      {lede && <p className="lede">{lede}</p>}
+      <div>
+        {crumbs?.length ? <Crumbs crumbs={crumbs} /> : null}
+        {eyebrow && <div className="eyebrow">{eyebrow}</div>}
+        <h1>{title}</h1>
+        {lede && <p className="lede">{lede}</p>}
+      </div>
       {children && <div className="page-head-actions">{children}</div>}
     </div>
   );
@@ -33,6 +36,18 @@ export function Crumbs({ crumbs }: { crumbs: { href?: string; label: string }[] 
   );
 }
 
+function SectionHead({ id, title, intro, more }: { id?: string; title: React.ReactNode; intro?: React.ReactNode; more?: React.ReactNode }) {
+  return (
+    <div className="section-head">
+      <div>
+        <h2 id={id ? `${id}-heading` : undefined}>{title}</h2>
+        {intro && <p>{intro}</p>}
+      </div>
+      {more && <div className="more">{more}</div>}
+    </div>
+  );
+}
+
 export function Section({ title, id, more, intro, children, tight }: {
   title: React.ReactNode;
   id?: string;
@@ -41,27 +56,19 @@ export function Section({ title, id, more, intro, children, tight }: {
   children: React.ReactNode;
   tight?: boolean;
 }) {
-  const headingId = id ? `${id}-heading` : undefined;
   return (
-    <section className={tight ? 'section-tight' : 'section'} id={id} aria-labelledby={headingId}>
-      <div className="section-head">
-        <div>
-          <h2 id={headingId}>{title}</h2>
-          {intro && <p>{intro}</p>}
-        </div>
-        {more && <div className="more">{more}</div>}
-      </div>
+    <section className={tight ? 'section-tight' : 'section'} id={id} aria-labelledby={id ? `${id}-heading` : undefined}>
+      <SectionHead id={id} title={title} intro={intro} more={more} />
       {children}
     </section>
   );
 }
 
 /** A section on an entity page, reachable from the section navigation. */
-export function EntitySection({ id, title, intro, children }: { id: string; title: string; intro?: React.ReactNode; children: React.ReactNode }) {
+export function EntitySection({ id, title, intro, more, children }: { id: string; title: string; intro?: React.ReactNode; more?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="entity-section" id={id} aria-labelledby={`${id}-heading`}>
-      <h2 id={`${id}-heading`}>{title}</h2>
-      {intro ? <p className="intro">{intro}</p> : <div style={{ height: 'var(--s4)' }} />}
+      <SectionHead id={id} title={title} intro={intro} more={more} />
       {children}
     </section>
   );
@@ -108,7 +115,7 @@ export function Disclosure({ id, title, meta, aside, open, children }: {
           <span className="title">{title}</span>
           {meta && <span className="meta">{meta}</span>}
         </span>
-        {aside}
+        <span>{aside}</span>
       </summary>
       <div className="body">{children}</div>
     </details>
@@ -133,12 +140,18 @@ export function Tag({ children, title }: { children: React.ReactNode; title?: st
 }
 
 export function KindTag({ kind }: { kind: string }) {
-  return <span className="tag tag-kind">{KIND_LABEL[kind] ?? humanize(kind)}</span>;
+  return <EntityMark type={entityTypeFor(kind)} word />;
 }
 
-export function EntityLink({ entity, children }: { entity: { kind: string; slug: string; name: string; modelSlug?: string | null }; children?: React.ReactNode }) {
+export function EntityLink({ entity, children, mark }: { entity: { kind: string; slug: string; name: string; modelSlug?: string | null }; children?: React.ReactNode; mark?: boolean }) {
   const href = entityHref(entity);
-  return href ? <Link href={href}>{children ?? entity.name}</Link> : <>{children ?? entity.name}</>;
+  const content = (
+    <>
+      {mark && <><EntityMark type={entityTypeFor(entity.kind)} /> </>}
+      {children ?? entity.name}
+    </>
+  );
+  return href ? <Link href={href}>{content}</Link> : <>{content}</>;
 }
 
 export const FIT_LABEL: Record<CompatResult['fit'], string> = {
@@ -162,9 +175,7 @@ export function Speed({ speed, unit = 'tok/s' }: { speed: SpeedAssessment; unit?
     return (
       <span className="nowrap">
         <span className="val-measured">{formatNumber(speed.genTps)}</span> <span className="small muted">{unit}</span>{' '}
-        <Basis kind="measured" title={`Median of ${speed.samples} measurement(s): ${speed.origins.map(humanize).join(', ')}`}>
-          measured · {speed.samples}
-        </Basis>
+        <Basis kind="measured" title={`Median of ${speed.samples} measurement(s): ${speed.origins.map(humanize).join(', ')}`}>measured</Basis>
       </span>
     );
   }
@@ -187,7 +198,7 @@ export function Visibility({ visibility, status, verification }: { visibility?: 
   return (
     <span className="tags" style={{ display: 'inline-flex' }}>
       {verification === 'verified' && <Basis kind="measured">verified</Basis>}
-      {verification === 'unverified' && <Basis kind="community">unverified</Basis>}
+      {verification === 'unverified' && <Basis kind="source">unverified</Basis>}
       {verification === 'disputed' && <span className="basis status-private">disputed</span>}
       {visibility && visibility !== 'public' && <span className="basis status-private">{visibility}</span>}
       {status && status !== 'published' && <span className="basis status-private">{status}</span>}
@@ -195,8 +206,13 @@ export function Visibility({ visibility, status, verification }: { visibility?: 
   );
 }
 
-/** Plain-language license label for scanning; full license name belongs on the entity page. */
-export function LicenseShort({ commercialUse }: { commercialUse: string | null | undefined }) {
-  if (!commercialUse) return <span className="muted">License unknown</span>;
-  return commercialUse === 'allowed' ? <span>Open license</span> : <span>Restricted license</span>;
+/** Plain-language license marker: filled = open, half = restricted. */
+export function LicenseShort({ commercialUse, name }: { commercialUse: string | null | undefined; name?: string }) {
+  if (!commercialUse) return <span className="lic"><i aria-hidden="true" />License unknown</span>;
+  const open = commercialUse === 'allowed';
+  return (
+    <span className={`lic ${open ? 'open' : 'restricted'}`} title={name}>
+      <i aria-hidden="true" />{open ? 'Open' : 'Restricted'}
+    </span>
+  );
 }

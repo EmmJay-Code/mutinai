@@ -318,6 +318,40 @@ export interface ModelSystemCompat {
 }
 
 /** For one model, the best recommendation (across its non-base variants) on every reference system. */
+export interface ModelCompatSummary {
+  /** Reference systems where the best option fits in accelerator memory. */
+  runsWell: number;
+  /** Systems where it only runs on CPU or with offload. */
+  slow: number;
+  tooLarge: number;
+  of: number;
+}
+
+/** For every model, how many reference systems run it well, slowly, or not at all. One catalog load for all models. */
+export async function compatSummaryByModel(db: Executor, opts: { contextLength: number }): Promise<Record<string, ModelCompatSummary>> {
+  const { artifacts, runtimes, measurements } = await loadCompatCatalog(db);
+  const systems = await rows<{ slug: string }>(db, sql`
+    select ce.slug from ecosystem.hardware_configuration hc join ecosystem.entity ce on ce.id = hc.id`);
+  const hardware = (await Promise.all(systems.map((s) => loadReferenceHardware(db, s.slug)))).filter((h): h is HardwareSelection => h != null);
+  const byModel = new Map<string, CompatArtifactRow[][]>();
+  for (const group of groupByVariant(artifacts)) {
+    const slug = group[0]!.modelSlug;
+    byModel.set(slug, [...(byModel.get(slug) ?? []), group]);
+  }
+  const out: Record<string, ModelCompatSummary> = {};
+  for (const [slug, groups] of byModel) {
+    const summary: ModelCompatSummary = { runsWell: 0, slow: 0, tooLarge: 0, of: hardware.length };
+    for (const hw of hardware) {
+      const placements = groups.map((g) => evaluateVariant(hw.spec, g, runtimes, measurements, opts.contextLength).recommended?.result.placement);
+      if (placements.includes('accelerator')) summary.runsWell += 1;
+      else if (placements.some((p) => p === 'cpu' || p === 'hybrid')) summary.slow += 1;
+      else summary.tooLarge += 1;
+    }
+    out[slug] = summary;
+  }
+  return out;
+}
+
 export async function compatForModelAcrossSystems(db: Executor, modelSlug: string, opts: { contextLength: number }): Promise<ModelSystemCompat[]> {
   const { artifacts, runtimes, measurements } = await loadCompatCatalog(db);
   const groups = groupByVariant(artifacts.filter((a) => a.modelSlug === modelSlug));

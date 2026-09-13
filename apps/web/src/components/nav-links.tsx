@@ -34,7 +34,7 @@ export function RunLink() {
   const pathname = usePathname();
   return (
     <Link href="/run" className="utility-link" aria-current={pathname.startsWith('/run') ? 'page' : undefined}>
-      <span aria-hidden="true">▸</span> <span>What can <span className="long">my hardware</span> run?</span>
+      <span className="long">What can I run?</span><span className="short" aria-hidden="true">Can I run it?</span>
     </Link>
   );
 }

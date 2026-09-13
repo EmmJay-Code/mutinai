@@ -1,27 +1,37 @@
 import { catalog, community, compatQueries, getDb } from '@mutinai/db';
 import Link from 'next/link';
-import { Basis, EntityLink, FitBadge, Section, Speed } from '@/components/ui';
-import { CAPABILITY_LABEL, FORM_FACTOR_LABEL, formatDate, formatNumber, formatParams, humanize, isoDate } from '@/lib/format';
+import { EntityLink, FitBadge, LicenseShort, Speed } from '@/components/ui';
+import { ActivityBars, Avatar, CapabilityBars, EntityMark, FrontierChart, Heat, MemoryScale, Sparkline, SystemsMeter, type EntityType } from '@/components/viz';
+import { entityHref, FORM_FACTOR_LABEL, formatDate, formatNumber, formatParams, humanize, isoDate } from '@/lib/format';
 
 const PREVIEW_SYSTEM = 'rtx-4090-workstation';
 
+const EVENT_ENTITY: Record<string, EntityType> = { model_release: 'model', runtime_release: 'tool', hardware_launch: 'hardware', benchmark_update: 'bench', announcement: 'event' };
+
 const LEARN_PATHS = [
-  { id: 'start-here', title: 'Start here', text: 'What “open” models are, and why running them yourself matters.' },
-  { id: 'run-locally', title: 'Run locally', text: 'Memory, quantization and runtimes — the three things that decide what you can run.' },
-  { id: 'understand-models', title: 'Understand models', text: 'Families, releases, variants and benchmarks, without the jargon.' },
-  { id: 'build', title: 'Build with them', text: 'APIs, coding assistants, agents and fine-tuning on open weights.' },
+  { id: 'start-here', title: 'Start here', text: 'What open models are and why running them yourself matters.' },
+  { id: 'run-locally', title: 'Run locally', text: 'Memory, quantization and runtimes decide what you can run.' },
+  { id: 'understand-models', title: 'Understand models', text: 'Families, releases, variants and benchmarks, decoded.' },
+  { id: 'build', title: 'Build with them', text: 'APIs, coding assistants, agents and fine-tuning.' },
 ];
+
+const monthLabel = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' });
 
 export default async function DiscoverPage() {
   const db = getDb();
-  const [counts, events, active, stats, picker, submissions, reviews] = await Promise.all([
-    catalog.getCatalogCounts(db),
-    catalog.listEvents(db, { limit: 10 }),
-    catalog.listModels(db, { sort: 'activity' }),
+  const [events, months, frontier, models, stats, picker, submissions, reviews, profiles, summary, runtimes, devices] = await Promise.all([
+    catalog.listEvents(db, { limit: 12 }),
+    catalog.eventActivityByMonth(db, 12),
+    catalog.benchmarkFrontier(db, 'gpqa-diamond'),
+    catalog.listModels(db),
     community.getCommunityStats(db),
     compatQueries.listHardwarePickerOptions(db),
-    community.listSubmissions(db, {}, undefined, 20),
-    community.listRecentReviews(db, undefined, 20),
+    community.listSubmissions(db, {}, undefined, 40),
+    community.listRecentReviews(db, undefined, 10),
+    catalog.listCapabilityProfiles(db),
+    compatQueries.compatSummaryByModel(db, { contextLength: 8192 }),
+    catalog.listProjects(db, { category: 'runtime' }),
+    catalog.listDevices(db, { sort: 'bandwidth' }),
   ]);
   const previewHardware = await compatQueries.loadReferenceHardware(db, PREVIEW_SYSTEM);
   const preview = previewHardware ? await compatQueries.runCompatibility(db, previewHardware, { contextLength: 8192 }) : [];
@@ -30,127 +40,237 @@ export default async function DiscoverPage() {
     .sort((a, b) => b.paramsTotal - a.paramsTotal)
     .slice(0, 5);
 
-  // Lead with a significant development (a model release or hardware launch), not merely the newest item.
+  // Signals, computed over the 12 months ending with the latest recorded event.
+  const endOf = (m: string) => `${m}-31`;
+  const modelsOverTime = months.map((m) => models.filter((x) => x.releasedOn && x.releasedOn <= endOf(m.month)).length);
+  const runsOverTime = months.map((m) => submissions.filter((s) => isoDate(s.createdAt) <= endOf(m.month)).length);
+  const latestMonth = months.at(-1);
+  const best = frontier?.points.at(-1);
+
   const lead = events.find((e) => e.kind === 'model_release' || e.kind === 'hardware_launch') ?? events[0];
-  const rest = events.filter((e) => e !== lead).slice(0, 4);
-  const mostActive = active.filter((m) => m.reviewCount + m.runCount > 0).slice(0, 3);
-  const featuredRun = submissions.find((s) => s.verification === 'verified') ?? submissions[0];
+  const rest = events.filter((e) => e !== lead).slice(0, 8);
+  const leadRelease = lead?.entities.find((e) => e.kind === 'model_release');
+  const leadModel = leadRelease
+    ? models.filter((m) => m.releaseSlug === leadRelease.slug).sort((a, b) => b.reviewCount + b.runCount - (a.reviewCount + a.runCount) || b.paramsTotal - a.paramsTotal)[0]
+    : undefined;
+
+  const activeModels = models.filter((m) => m.reviewCount + m.runCount > 0).sort((a, b) => b.reviewCount + b.runCount - (a.reviewCount + a.runCount)).slice(0, 3);
+  const topRuntime = [...runtimes].sort((a, b) => b.resultCount - a.resultCount)[0];
+  const topDevice = devices.filter((d) => d.deviceKind !== 'cpu').sort((a, b) => b.resultCount - a.resultCount)[0];
+  const featuredRuns = [submissions.find((s) => s.verification === 'verified'), submissions.find((s) => s.verification !== 'verified')].filter(Boolean);
   const featuredReview = [...reviews].sort((a, b) => b.helpfulScore - a.helpfulScore)[0];
-  const secondReview = reviews.find((r) => r.id !== featuredReview?.id && r.subject.kind !== featuredReview?.subject.kind);
+  const order = ['laptop', 'mini_pc', 'desktop', 'server'];
   const systemsByForm = Object.entries(
     picker.configurations.reduce<Record<string, typeof picker.configurations>>((acc, c) => ({ ...acc, [c.formFactor]: [...(acc[c.formFactor] ?? []), c] }), {}),
-  ).sort(([a], [b]) => ['laptop', 'mini_pc', 'desktop', 'server'].indexOf(a) - ['laptop', 'mini_pc', 'desktop', 'server'].indexOf(b));
+  ).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
 
   return (
     <>
-      <section className="hero" aria-labelledby="hero-title">
-        <div className="eyebrow"><b>●</b> Open AI / right now</div>
-        <h1 id="hero-title">Everything happening in open AI.</h1>
-        <p className="lede">Models, hardware, tools, research — and the people building with them. Find out what’s new, what’s good, and what will actually run on your machine.</p>
-        <div className="hero-actions">
-          <a className="btn btn-primary btn-large" href="#now">Explore what’s new</a>
-          <Link className="btn btn-large" href="/run">What can my hardware run?</Link>
+      <section className="opening" aria-labelledby="hero-title">
+        <div>
+          <div className="eyebrow">Open AI / right now{latestMonth ? ` · data to ${monthLabel(latestMonth.month)}` : ''}</div>
+          <h1 id="hero-title">Everything happening in open AI.</h1>
+          <p className="lede">Models, hardware and tools — measured, sourced, and checked against the machine you have.</p>
+          <div className="opening-actions">
+            <a className="btn btn-primary" href="#now">Explore what’s new</a>
+            <Link className="btn" href="/run">What can my hardware run?</Link>
+          </div>
         </div>
-        <div className="hero-stats">
-          <div><b>{counts.model ?? 0}</b><span>open models tracked</span></div>
-          <div><b>{stats.submissions}</b><span>community benchmark runs</span></div>
+        <div className="signals" aria-label="Ecosystem signals">
+          <div className="signal">
+            <div className="signal-value">{models.length}</div>
+            <div className="signal-label">Open models tracked</div>
+            <Sparkline values={modelsOverTime} label={`Models tracked grew from ${modelsOverTime[0]} to ${models.length} over 12 months`} />
+          </div>
+          <div className="signal">
+            <div className="signal-value">{latestMonth?.count ?? 0}<small>in {latestMonth ? monthLabel(latestMonth.month) : '—'}</small></div>
+            <div className="signal-label">Releases & launches</div>
+            <ActivityBars values={months.map((m) => m.count)} label="Events per month over 12 months" width={120} height={20} />
+          </div>
+          <div className="signal">
+            <div className="signal-value">{best ? best.value.toFixed(1) : '—'}<small>%</small></div>
+            <div className="signal-label">Best open GPQA · {best?.name ?? '—'}</div>
+            {frontier && <Sparkline values={frontier.points.map((p) => p.value)} label="Best open GPQA score over time" />}
+          </div>
+          <div className="signal">
+            <div className="signal-value">{stats.verified}<small>of {stats.submissions} runs</small></div>
+            <div className="signal-label">Verified community runs</div>
+            <Sparkline values={runsOverTime} label="Community benchmark runs over 12 months" />
+          </div>
         </div>
       </section>
 
-      <Section id="now" title="Happening now" more={<Link href="/new">Full timeline →</Link>}>
-        <div className="split-wide">
+      <div className="front" id="now">
+        <section aria-labelledby="now-heading">
+          <div className="section-head" style={{ borderTop: 0, paddingTop: 0 }}>
+            <h2 id="now-heading"><span className="glyph g-event" aria-hidden="true" /> Happening now</h2>
+            <div className="more"><Link href="/new">Full timeline →</Link></div>
+          </div>
           {lead && (
-            <article className="lead-story">
-              <div className="meta">{humanize(lead.kind)} · <time dateTime={isoDate(lead.occurredAt)}>{formatDate(lead.occurredAt, 'long')}</time></div>
-              <h3>{lead.url ? <a href={lead.url} rel="noopener noreferrer">{lead.title}</a> : lead.title}</h3>
-              {lead.summary && <p>{lead.summary}</p>}
-              {lead.entities.length > 0 && (
-                <div className="tags">
-                  {lead.entities.map((e) => <EntityLink key={e.slug} entity={e}>{e.name} →</EntityLink>)}
+            <article className="lead">
+              <div>
+                <div className="kicker"><EntityMark type={EVENT_ENTITY[lead.kind] ?? 'event'} word={humanize(lead.kind)} /> · <time dateTime={isoDate(lead.occurredAt)}>{formatDate(lead.occurredAt, 'long')}</time></div>
+                <h3>{lead.entities[0] && entityHref(lead.entities[0]) ? <Link href={entityHref(lead.entities[0])!}>{lead.title}</Link> : lead.title}</h3>
+                {lead.summary && <p>{lead.summary}</p>}
+                <div className="tags small">
+                  {lead.entities.map((e) => <EntityLink key={e.slug} entity={e} mark />)}
+                </div>
+              </div>
+              {leadModel && (
+                <div className="spec" aria-label={`${leadModel.name} at a glance`}>
+                  <div className="spec-row">
+                    <Link href={`/models/${leadModel.slug}`} style={{ fontWeight: 600 }}><EntityMark type="model" /> {leadModel.name}</Link>
+                    <LicenseShort commercialUse={leadModel.licenses.some((l) => l.commercialUse === 'allowed') ? 'allowed' : leadModel.licenses[0]?.commercialUse} />
+                  </div>
+                  <div className="spec-row">
+                    <span className="k">Capability profile</span>
+                    <CapabilityBars profile={profiles[leadModel.slug]} legend />
+                  </div>
+                  <MemoryScale gb={leadModel.minMemoryGb} label="Memory to run" />
+                  {summary[leadModel.slug] && (
+                    <div className="spec-row"><span className="k">Runs well on</span><SystemsMeter runsWell={summary[leadModel.slug]!.runsWell} slow={summary[leadModel.slug]!.slow} of={summary[leadModel.slug]!.of} /></div>
+                  )}
+                  <div className="spec-row"><span className="k">Size</span><span className="num">{formatParams(leadModel.paramsTotal)}{leadModel.paramsActive ? ` · ${formatParams(leadModel.paramsActive)} active` : ''}</span></div>
                 </div>
               )}
             </article>
           )}
-          <div>
-            <ul className="story-list">
-              {rest.map((e) => (
+          <ol className="timeline-feed" aria-label="Recent events">
+            {rest.map((e) => {
+              const href = e.entities[0] ? entityHref(e.entities[0]) : null;
+              return (
                 <li key={e.id}>
-                  <div className="meta">{humanize(e.kind)} · {formatDate(e.occurredAt)}</div>
-                  <div className="title">{e.entities[0] ? <EntityLink entity={e.entities[0]}>{e.title}</EntityLink> : e.title}</div>
+                  <time dateTime={isoDate(e.occurredAt)}>{formatDate(e.occurredAt).replace(/ \d{4}$/, '')}</time>
+                  <span className="node"><EntityMark type={EVENT_ENTITY[e.kind] ?? 'event'} label={humanize(e.kind)} /></span>
+                  <div>
+                    <div className="title">{href ? <Link href={href}>{e.title}</Link> : e.title}</div>
+                    {e.entities.some((x) => !e.title.toLowerCase().includes(x.name.toLowerCase())) && <div className="about">{e.entities.filter((x) => !e.title.toLowerCase().includes(x.name.toLowerCase())).map((x) => x.name).join(' · ')}</div>}
+                  </div>
+                  <span className="kind">{humanize(e.kind)}</span>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+
+        <aside className="rail">
+          {frontier && (
+            <section className="rail-block" aria-labelledby="frontier-h">
+              <h2 id="frontier-h"><span><span className="glyph g-bench" aria-hidden="true" /> Benchmark frontier</span><span>{frontier.benchmarkName}</span></h2>
+              <FrontierChart points={frontier.points} />
+              <p className="small muted" style={{ margin: '4px 0 0' }}>Best developer-reported open score, by release date.</p>
+            </section>
+          )}
+          <section className="rail-block" aria-labelledby="active-h">
+            <h2 id="active-h">Most active <span>community</span></h2>
+            <ul className="mini-list">
+              {activeModels.map((m) => (
+                <li key={m.slug}>
+                  <EntityMark type="model" />
+                  <Link href={`/models/${m.slug}`}>{m.name}<span className="sub">{m.runCount} run{m.runCount === 1 ? '' : 's'} · {m.reviewCount} review{m.reviewCount === 1 ? '' : 's'}</span></Link>
+                  <Heat level={Math.min(3, m.reviewCount + m.runCount)} label={`${m.reviewCount + m.runCount} contributions`} />
                 </li>
               ))}
+              {topRuntime && (
+                <li>
+                  <EntityMark type="tool" />
+                  <Link href={`/tools/${topRuntime.slug}`}>{topRuntime.name}<span className="sub">{topRuntime.resultCount} measurements</span></Link>
+                  <Heat level={3} label="Most measured runtime" />
+                </li>
+              )}
+              {topDevice && (
+                <li>
+                  <EntityMark type="hardware" />
+                  <Link href={`/hardware/${topDevice.slug}`}>{topDevice.name.replace(/^(NVIDIA|AMD|Apple)\s+(GeForce\s+|Radeon\s+)?/, '')}<span className="sub">{topDevice.resultCount} measurements</span></Link>
+                  <Heat level={2} label="Most measured hardware" />
+                </li>
+              )}
             </ul>
-          </div>
-        </div>
-        {mostActive.length > 0 && (
-          <>
-            <h3 className="subhead">Most discussed by the community</h3>
-            <div className="cols-3">
-              {mostActive.map((m) => (
-                <div key={m.slug}>
-                  <Link href={`/models/${m.slug}`} style={{ fontSize: 19, fontWeight: 600, textDecoration: 'none' }}>{m.name}</Link>
-                  <div className="small muted">{m.developerName}</div>
-                  <div className="meta" style={{ marginTop: 4 }}>
-                    {m.reviewCount} review{m.reviewCount === 1 ? '' : 's'} · {m.runCount} benchmark run{m.runCount === 1 ? '' : 's'}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </Section>
+          </section>
+          <section className="rail-block" aria-labelledby="voices-h">
+            <h2 id="voices-h">From the community <span><Link href="/community">all →</Link></span></h2>
+            <ul className="mini-list">
+              {featuredRuns.map((s) => {
+                const gen = s!.measurements.find((m) => ['tg128', 'gen_tps'].includes(m.key)) ?? s!.measurements[0]!;
+                return (
+                  <li key={s!.id} style={{ gridTemplateColumns: '24px minmax(0,1fr)' }}>
+                    <Avatar handle={s!.submitter.handle} />
+                    <span>
+                      <span className="val-measured">{formatNumber(gen.value)}</span> <span className="small muted">{gen.unit}</span> · <Link href={`/models/${s!.artifact.modelSlug}`}>{s!.artifact.variantName}</Link>
+                      <span className="sub">{s!.hardware.type === 'reference' ? s!.hardware.name : s!.hardware.components.map((c) => c.name).join(' + ')} · @{s!.submitter.handle}{s!.verification === 'verified' ? ' · verified' : ''}</span>
+                    </span>
+                  </li>
+                );
+              })}
+              {featuredReview && (
+                <li style={{ gridTemplateColumns: '24px minmax(0,1fr)' }}>
+                  <Avatar handle={featuredReview.author.handle} />
+                  <span>
+                    <span className="serif" style={{ fontSize: 14.5 }}>“{featuredReview.title}”</span>
+                    <span className="sub">{featuredReview.subject.name} · @{featuredReview.author.handle}</span>
+                  </span>
+                </li>
+              )}
+            </ul>
+          </section>
+        </aside>
+      </div>
 
-      <Section title="Explore" intro="Three worlds, each with the depth you need when you want it.">
-        <div className="cols-3">
+      <section className="section" aria-labelledby="explore-h">
+        <div className="section-head"><h2 id="explore-h">Explore</h2></div>
+        <div className="gateways">
           <Link href="/models" className="gateway">
+            <span className="glyph g-model" aria-hidden="true" />
             <h3>Models</h3>
-            <p>Find the right open model for coding, reasoning or chat — and see how much memory it really needs.</p>
-            <div className="gateway-links"><span>Qwen3 30B-A3B</span><span>Llama 3.3 70B</span><span>Phi-4</span></div>
+            <p>Find the right open model and see what it needs to run.</p>
+            <span className="gateway-links">{activeModels.map((m) => <span key={m.slug}>{m.name}</span>)}</span>
           </Link>
           <Link href="/hardware" className="gateway">
+            <span className="glyph g-hardware" aria-hidden="true" />
             <h3>Hardware</h3>
-            <p>Compare GPUs, Macs and mini PCs by what matters for AI: how much memory, and how fast it moves.</p>
-            <div className="gateway-links"><span>RTX 4090</span><span>M4 Max</span><span>Ryzen AI Max+</span></div>
+            <p>Compare devices by memory, bandwidth and what they can hold.</p>
+            <span className="gateway-links">{devices.filter((d) => d.deviceKind !== 'accelerator').slice(0, 3).map((d) => <span key={d.slug}>{d.name.replace(/^(NVIDIA|AMD|Apple)\s+(GeForce\s+|Radeon\s+)?/, '')}</span>)}</span>
           </Link>
           <Link href="/tools" className="gateway">
+            <span className="glyph g-tool" aria-hidden="true" />
             <h3>Tools</h3>
-            <p>The runtimes, chat interfaces, coding assistants and fine-tuning frameworks around open models.</p>
-            <div className="gateway-links"><span>llama.cpp</span><span>Ollama</span><span>Open WebUI</span></div>
+            <p>Runtimes, interfaces, coding assistants and fine-tuning.</p>
+            <span className="gateway-links">{[...runtimes].sort((a, b) => b.resultCount - a.resultCount).slice(0, 3).map((r) => <span key={r.slug}>{r.name}</span>)}</span>
           </Link>
         </div>
-      </Section>
+      </section>
 
-      <section className="band" aria-labelledby="run-heading">
-        <div className="split">
+      <section className="section" aria-labelledby="run-heading">
+        <div className="run-band">
           <div>
             <div className="step">What can I run?</div>
-            <h2 id="run-heading" style={{ fontSize: 'clamp(30px, 4vw, 44px)', letterSpacing: '-0.03em' }}>Start from the machine you have.</h2>
-            <p className="lede" style={{ marginTop: 'var(--s3)' }}>Pick something close to your setup. We’ll show which models fit in its memory, which version to download, and how fast they’re likely to run.</p>
-            <div className="system-picker" style={{ marginTop: 'var(--s6)' }}>
+            <h2 id="run-heading">Start from the machine you have.</h2>
+            <p className="small muted" style={{ margin: 0 }}>Pick the closest setup — we recommend a download, a runtime, and show memory and speed.</p>
+            <div className="system-picker">
               {systemsByForm.map(([form, systems]) => (
                 <div className="picker-group" key={form}>
                   <h4>{FORM_FACTOR_LABEL[form] ?? humanize(form)}</h4>
                   <div className="chips">
-                    {systems.map((s) => (
-                      <Link key={s.slug} className="chip" href={`/run?system=${s.slug}`}>{s.name.replace(/\s*\(.*\)$/, '')}</Link>
-                    ))}
+                    {systems.map((s) => <Link key={s.slug} className="chip" href={`/run?system=${s.slug}`}>{s.name.replace(/\s*\(.*\)$/, '')}</Link>)}
                   </div>
                 </div>
               ))}
-              <div>
-                <Link href="/run?mode=custom" className="btn">Build your own setup →</Link>
-              </div>
+              <div className="picker-group"><span /><Link href="/run?mode=custom" className="small link">Build your own setup →</Link></div>
             </div>
           </div>
           <div>
-            <div className="meta">Example · {previewHardware?.label} · 8K context</div>
-            <h3 style={{ fontSize: 22, margin: 'var(--s2) 0 var(--s4)' }}>The largest models that fit entirely in its 24 GB GPU</h3>
+            <div className="section-head" style={{ marginBottom: 4 }}>
+              <h2><span className="glyph g-system" aria-hidden="true" /> {previewHardware?.label}</h2>
+              <div className="more"><Link href={`/run?system=${PREVIEW_SYSTEM}`}>Everything it runs →</Link></div>
+            </div>
+            <p className="small muted" style={{ margin: '0 0 4px' }}>Largest models that fit entirely in its 24 GB GPU, at 8K context.</p>
             <ul className="pick-list">
               {picks.map((p) => (
                 <li key={p.variantSlug}>
+                  <EntityMark type="variant" />
                   <div>
                     <Link className="name" href={`/models/${p.modelSlug}#${p.variantSlug}`}>{p.variantName}</Link>
-                    <div className="small muted">{formatParams(p.paramsTotal)} · {p.recommended!.row.schemeName} via {p.recommended!.runtime.name}</div>
+                    <div className="small muted"><span className="num">{formatParams(p.paramsTotal)}</span> · <span className="mono">{p.recommended!.row.schemeName}</span> via {p.recommended!.runtime.name}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <FitBadge fit={p.recommended!.result.fit} />
@@ -159,50 +279,19 @@ export default async function DiscoverPage() {
                 </li>
               ))}
             </ul>
-            <p style={{ marginTop: 'var(--s4)' }}><Link href={`/run?system=${PREVIEW_SYSTEM}`}>See everything this system can run →</Link></p>
           </div>
         </div>
       </section>
 
-      <Section title="From the community" intro="Real runs and reviews from people using open models." more={<Link href="/community">All community activity →</Link>}>
-        <div className="voices">
-          {featuredRun && (() => {
-            const gen = featuredRun.measurements.find((m) => ['tg128', 'gen_tps'].includes(m.key)) ?? featuredRun.measurements[0]!;
-            return (
-              <article className="voice">
-                <div className="meta">Benchmark run {featuredRun.verification === 'verified' && <Basis kind="measured">verified</Basis>}</div>
-                <div className="figure">{formatNumber(gen.value)} <span className="small muted" style={{ fontFamily: 'var(--font-sans)', letterSpacing: 0 }}>{gen.unit}</span></div>
-                <p style={{ margin: 0 }}>
-                  <Link href={`/models/${featuredRun.artifact.modelSlug}`}>{featuredRun.artifact.variantName}</Link> ({featuredRun.artifact.schemeName}) on{' '}
-                  {featuredRun.hardware.type === 'reference' ? featuredRun.hardware.name : featuredRun.hardware.components.map((c) => c.name).join(' + ')} with {featuredRun.runtime.name}
-                </p>
-                <div className="byline">@{featuredRun.submitter.handle} · {formatDate(featuredRun.createdAt)}</div>
-              </article>
-            );
-          })()}
-          {[featuredReview, secondReview].filter(Boolean).map((r) => (
-            <article className="voice" key={r!.id}>
-              <div className="meta">Review of <EntityLink entity={r!.subject} /></div>
-              <blockquote>“{r!.title}”</blockquote>
-              <p className="small muted" style={{ margin: 0 }}>{r!.body.length > 140 ? `${r!.body.slice(0, 140)}…` : r!.body}</p>
-              <div className="byline">@{r!.author.handle} · {r!.ratings.map((x) => `${CAPABILITY_LABEL[x.dimension] ?? humanize(x.dimension)} ${x.score}/5`).slice(0, 2).join(' · ')}</div>
-            </article>
-          ))}
-        </div>
-      </Section>
-
-      <Section title="Learn" intro="Short, practical paths into open AI — from first questions to building things." more={<Link href="/learn">All guides →</Link>}>
-        <ol className="paths cols-4">
+      <section className="section" aria-labelledby="learn-h">
+        <div className="section-head"><h2 id="learn-h">Learn</h2><div className="more"><Link href="/learn">All guides →</Link></div></div>
+        <ol className="paths">
           {LEARN_PATHS.map((p) => (
-            <li key={p.id}>
-              <Link href={`/learn#${p.id}`}>
-                <strong>{p.title}</strong>
-                <span>{p.text}</span>
-              </Link>
-            </li>
+            <li key={p.id}><Link href={`/learn#${p.id}`}><strong>{p.title}</strong><span>{p.text}</span></Link></li>
           ))}
         </ol>
-      </Section>
+      </section>
     </>
   );
 }
+

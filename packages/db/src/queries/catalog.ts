@@ -2,7 +2,7 @@
  * PUBLIC catalog queries. No viewer parameter, no identity or community-private data.
  * Every query selects explicit columns into DTOs.
  */
-import { compat } from '@mutinai/domain';
+import { capabilityProfiles, compat, frontier, type CapabilityProfile, type DatedScore } from '@mutinai/domain';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Executor } from '../client';
 
@@ -667,4 +667,92 @@ export async function listBenchmarks(db: Executor, kind?: 'capability' | 'perfor
     from ecosystem.benchmark b join ecosystem.entity be on be.id = b.id
     ${kind ? sql`where b.benchmark_kind = ${kind}` : sql``}
     order by be.name`);
+}
+
+// ─── Visual summaries ────────────────────────────────────────────────────────
+
+export interface BestScoreDTO {
+  modelSlug: string;
+  modelName: string;
+  benchmarkSlug: string;
+  benchmarkName: string;
+  value: number;
+  releasedOn: string | null;
+}
+
+/** Best capability-benchmark result per model (across its variants). */
+export async function listBestBenchmarkScores(db: Executor): Promise<BestScoreDTO[]> {
+  return rows<BestScoreDTO>(db, sql`
+    select me.slug as "modelSlug", me.name as "modelName", be.slug as "benchmarkSlug", be.name as "benchmarkName",
+      max(br.value)::float8 as value, max(r.released_on)::text as "releasedOn"
+    from ecosystem.benchmark_result br
+    join ecosystem.benchmark b on b.id = br.benchmark_id and b.benchmark_kind = 'capability'
+    join ecosystem.entity be on be.id = b.id
+    join ecosystem.model_variant v on v.id = br.variant_id
+    join ecosystem.model m on m.id = v.model_id
+    join ecosystem.entity me on me.id = m.id
+    join ecosystem.model_release r on r.id = m.release_id
+    group by me.slug, me.name, be.slug, be.name`);
+}
+
+/** Capability profile per model slug, relative to the best result in the catalog for each benchmark. */
+export async function listCapabilityProfiles(db: Executor): Promise<Record<string, CapabilityProfile>> {
+  const scores = await listBestBenchmarkScores(db);
+  return Object.fromEntries(capabilityProfiles(scores.map((s) => ({ subject: s.modelSlug, benchmark: s.benchmarkSlug, value: s.value }))));
+}
+
+export interface FrontierDTO {
+  benchmarkSlug: string;
+  benchmarkName: string;
+  points: (DatedScore & { name: string; modelSlug: string })[];
+}
+
+/**
+ * How the best open score on a benchmark has moved over time. Uses each variant's own release date,
+ * so a distill released later is not back-dated to its base model's release.
+ */
+export async function benchmarkFrontier(db: Executor, benchmarkSlug: string): Promise<FrontierDTO | null> {
+  const scores = await rows<{ slug: string; name: string; modelSlug: string; benchmarkName: string; value: number; date: string }>(db, sql`
+    select ve.slug, ve.name, me.slug as "modelSlug", be.name as "benchmarkName", max(br.value)::float8 as value,
+      coalesce(v.released_on, r.released_on)::text as date
+    from ecosystem.benchmark_result br
+    join ecosystem.entity be on be.id = br.benchmark_id
+    join ecosystem.model_variant v on v.id = br.variant_id
+    join ecosystem.entity ve on ve.id = v.id
+    join ecosystem.model m on m.id = v.model_id
+    join ecosystem.entity me on me.id = m.id
+    join ecosystem.model_release r on r.id = m.release_id
+    where be.slug = ${benchmarkSlug} and coalesce(v.released_on, r.released_on) is not null
+    group by ve.slug, ve.name, me.slug, be.name, v.released_on, r.released_on`);
+  if (!scores.length) return null;
+  const meta = new Map(scores.map((s) => [s.slug, s]));
+  return {
+    benchmarkSlug,
+    benchmarkName: scores[0]!.benchmarkName,
+    points: frontier(scores.map((s) => ({ subject: s.slug, date: s.date, value: s.value }))).map((p) => ({ ...p, name: meta.get(p.subject)!.name, modelSlug: meta.get(p.subject)!.modelSlug })),
+  };
+}
+
+export interface MonthActivityDTO {
+  month: string;
+  count: number;
+  kinds: Record<string, number>;
+}
+
+/** Events per month for the `months` months ending with the most recent event (gaps filled with zero). */
+export async function eventActivityByMonth(db: Executor, months = 12): Promise<MonthActivityDTO[]> {
+  const data = await rows<{ month: string; kind: string; n: number }>(db, sql`
+    select to_char(date_trunc('month', occurred_at), 'YYYY-MM') as month, event_kind::text as kind, count(*)::int as n
+    from ecosystem.event group by 1, 2`);
+  if (!data.length) return [];
+  const latest = data.map((d) => d.month).sort().at(-1)!;
+  const [y, m] = latest.split('-').map(Number) as [number, number];
+  const out: MonthActivityDTO[] = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(y, m - 1 - i, 1));
+    const key = d.toISOString().slice(0, 7);
+    const entries = data.filter((x) => x.month === key);
+    out.push({ month: key, count: entries.reduce((s, x) => s + x.n, 0), kinds: Object.fromEntries(entries.map((x) => [x.kind, x.n])) });
+  }
+  return out;
 }

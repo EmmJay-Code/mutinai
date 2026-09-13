@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Direction B · Almanac</title>
+<link rel="stylesheet" href="/node_modules/@fontsource-variable/source-serif-4/opsz.css" />
+<link rel="stylesheet" href="/node_modules/@fontsource-variable/schibsted-grotesk/index.css" />
+<style>
+  :root {
+    --bg: #13110f; --s1: #1a1714; --line: #2e2a25; --rule: #463f37; --t1: #f0e9dd; --t2: #c2b8a8; --t3: #8b8173;
+    --acc: #f05a3a; --model: #f05a3a; --hw: #d9b36a; --tool: #8fb8a2; --event: #8b8173; --bench: #b9a3d6;
+    --serif: 'Source Serif 4 Variable', Georgia, serif; --sans: 'Schibsted Grotesk Variable', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; } body { margin: 0; background: var(--bg); color: var(--t1); font: 15px/1.5 var(--sans); font-variant-numeric: tabular-nums; }
+  a { color: inherit; text-decoration: none; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
+  header { border-bottom: 1px solid var(--rule); } .top { display: flex; align-items: center; gap: 24px; height: 52px; }
+  .brand { font: 700 24px/1 var(--serif); letter-spacing: -0.02em; font-style: italic; } .brand b { color: var(--acc); font-style: normal; }
+  nav a { font-size: 14px; color: var(--t2); margin-right: 18px; } nav a.on { color: var(--t1); border-bottom: 2px solid var(--acc); padding-bottom: 14px; }
+  .search { margin-left: auto; border-bottom: 1px solid var(--rule); color: var(--t3); width: 240px; padding: 4px 0; font-size: 14px; }
+  .run { font-weight: 600; font-size: 14px; color: var(--acc); }
+  .dateline { display: flex; justify-content: space-between; font-size: 12px; color: var(--t3); padding: 6px 0; border-bottom: 3px double var(--rule); letter-spacing: .03em; }
+  .kick { font: 700 11px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; display: inline-flex; gap: 6px; align-items: center; }
+  .k-model { color: var(--model); } .k-hardware { color: var(--hw); } .k-tool { color: var(--tool); } .k-event { color: var(--event); } .k-bench { color: var(--bench); }
+  .mark { font: 700 11px var(--serif); }
+  .opening { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding: 18px 0 14px; border-bottom: 1px solid var(--rule); align-items: end; }
+  h1 { font: 600 44px/1 var(--serif); font-variation-settings: 'opsz' 60; letter-spacing: -0.025em; margin: 6px 0 8px; }
+  .sub { color: var(--t2); margin: 0; font-size: 16px; } .actions { margin-top: 10px; display: flex; gap: 18px; font-weight: 600; font-size: 14px; } .actions a:first-child { color: var(--acc); }
+  .figs { display: grid; grid-template-columns: repeat(4, 1fr); border-left: 1px solid var(--line); }
+  .fig { padding: 0 14px; border-right: 1px solid var(--line); } .fig b { font: 600 32px/1 var(--serif); display: block; } .fig small { font-size: 12px; color: var(--t3); }
+  .front { display: grid; grid-template-columns: 1.5fr 1fr 0.9fr; gap: 0; margin-top: 16px; }
+  .col { padding: 0 22px; border-right: 1px solid var(--line); } .col:first-child { padding-left: 0; } .col:last-child { border-right: 0; padding-right: 0; }
+  .sec { font: 700 12px var(--sans); letter-spacing: .14em; text-transform: uppercase; border-top: 2px solid var(--t1); padding-top: 6px; margin-bottom: 12px; display: flex; justify-content: space-between; } .sec span { color: var(--t3); font-weight: 500; letter-spacing: 0; text-transform: none; }
+  .lead h2 { font: 600 34px/1.08 var(--serif); font-variation-settings: 'opsz' 48; letter-spacing: -0.02em; margin: 8px 0; }
+  .lead p { font: 400 17px/1.5 var(--serif); color: var(--t2); margin: 0 0 12px; }
+  .factbox { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 8px 0; gap: 10px; }
+  .factbox div small { display: block; font-size: 11px; color: var(--t3); text-transform: uppercase; letter-spacing: .08em; } .factbox div b { font: 600 20px var(--serif); }
+  .story { padding: 10px 0; border-bottom: 1px solid var(--line); } .story:last-child { border-bottom: 0; } .story h3 { font: 600 18px/1.25 var(--serif); margin: 4px 0 0; } .story .when { font-size: 12px; color: var(--t3); }
+  .standings td { padding: 5px 0; font-size: 14px; border-bottom: 1px dotted var(--line); } .standings { width: 100%; border-collapse: collapse; }
+  .dots { position: relative; height: 22px; border-bottom: 1px solid var(--rule); margin: 10px 0 4px; } .dots i { position: absolute; bottom: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--t3); margin-left: -4px; } .dots i.hl { background: var(--acc); width: 10px; height: 10px; bottom: -5px; }
+  .voice { padding: 10px 0; border-bottom: 1px solid var(--line); } .voice q { font: italic 400 17px/1.35 var(--serif); display: block; } .voice .by { font-size: 12px; color: var(--t3); margin-top: 4px; }
+  .dir { margin-top: 26px; } .dirhead { display: flex; gap: 16px; align-items: baseline; border-top: 2px solid var(--t1); padding-top: 8px; }
+  .dirhead h2 { font: 600 26px var(--serif); margin: 0; } .filters a { font-size: 14px; color: var(--t2); margin-right: 14px; } .filters a.on { color: var(--acc); font-weight: 600; }
+  .entry { display: grid; grid-template-columns: 2fr 1.1fr 1fr 0.8fr; gap: 24px; padding: 12px 0; border-bottom: 1px solid var(--line); align-items: start; }
+  .entry h3 { font: 600 21px/1.1 var(--serif); margin: 2px 0; } .entry .by { font-size: 13px; color: var(--t3); } .entry .caps { font-size: 13px; color: var(--t2); margin-top: 2px; }
+  .ruler { position: relative; height: 26px; margin-top: 2px; } .ruler .line { position: absolute; left: 0; right: 0; top: 12px; border-top: 1px solid var(--rule); }
+  .ruler .t { position: absolute; top: 8px; height: 9px; border-left: 1px solid var(--rule); } .ruler .v { position: absolute; top: 5px; width: 3px; height: 15px; background: var(--acc); margin-left: -1px; } .ruler .lbl { position: absolute; top: 16px; font-size: 10px; color: var(--t3); transform: translateX(-50%); }
+  .prof { font-size: 12.5px; } .prof div { display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 8px; } .prof span.b { border-top: 3px solid var(--acc); } .prof span.n { border-top: 1px dotted var(--rule); }
+  .detail { margin-top: 28px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 32px; border-top: 3px double var(--rule); padding-top: 14px; }
+  .label { position: fixed; right: 12px; bottom: 12px; background: var(--acc); color: #111; font: 700 12px var(--sans); padding: 6px 10px; }
+</style>
+</head>
+<body>
+<header class="wrap">
+  <div class="top">
+    <a class="brand"><b>¶</b> Mutinai</a>
+    <nav><a class="on">Discover</a><a>Models</a><a>Hardware</a><a>Tools</a><a>Learn</a><a>Community</a></nav>
+    <div class="search">Search the ecosystem</div>
+    <a class="run">What can I run? →</a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="dateline"><span>Open AI / right now</span><span>Data to Tuesday, 20 May 2025 · 17 events tracked</span></div>
+  <section class="opening">
+    <div>
+      <h1>Everything happening in open AI.</h1>
+      <p class="sub">Models, hardware, tools and the people building with them.</p>
+      <div class="actions"><a>Explore what’s new →</a><a>What can my hardware run?</a></div>
+    </div>
+    <div class="figs" id="figs"></div>
+  </section>
+
+  <section class="front">
+    <div class="col lead" id="lead"></div>
+    <div class="col"><div class="sec">Also today <span>latest first</span></div><div id="feed"></div></div>
+    <div class="col">
+      <div class="sec">Standings <span>GPQA Diamond</span></div>
+      <div id="stand"></div>
+      <div class="sec" style="margin-top:16px">Letters & runs</div><div id="voices"></div>
+    </div>
+  </section>
+
+  <section class="dir">
+    <div class="dirhead"><h2>Models</h2><div class="filters"><a class="on">All 17</a><a>Coding</a><a>Reasoning</a><a>Vision</a><a>Under 24 GB</a><a>Open license</a></div></div>
+    <div id="models"></div>
+  </section>
+
+  <section class="detail" id="detail"></section>
+  <div style="height:40px"></div>
+</main>
+<div class="label">B · Almanac</div>
+<script src="data.js"></script>
+<script>
+const P = window.PROTO, $ = (id) => document.getElementById(id);
+const MARK = { model: '●', hardware: '■', tool: '▲', event: '—', bench: '◆' };
+const kick = (e, label) => `<span class="kick k-${e}"><span class="mark">${MARK[e]}</span>${label}</span>`;
+const ruler = (gb) => `<div class="ruler"><div class="line"></div>${[8, 24, 96].map(t => `<div class="t" style="left:${memPos(t) * 100}%"></div><span class="lbl" style="left:${memPos(t) * 100}%">${t} GB</span>`).join('')}<div class="v" style="left:${memPos(gb) * 100}%"></div></div>`;
+const prof = (p) => `<div class="prof">${[['Coding', 'coding'], ['Reasoning', 'reasoning'], ['Knowledge', 'knowledge']].map(([l, k]) => `<div><span>${l}</span>${p[k] == null ? '<span class="n"></span>' : `<span class="b" style="width:${p[k]}%"></span>`}</div>`).join('')}</div>`;
+$('figs').innerHTML = P.signals.map(s => `<div class="fig"><b>${s.value}</b><small>${s.label}</small></div>`).join('');
+const L = P.lead, lm = L.model;
+$('lead').innerHTML = `<div class="sec">Lead <span>${L.date}</span></div>${kick('model', L.kind)}<h2>${L.title}</h2><p>${L.deck}</p>
+  <div class="factbox"><div><small>Runs on</small><b>${lm.systems} of ${lm.of}</b></div><div><small>Memory</small><b>~${Math.ceil(lm.mem)} GB</b></div><div><small>License</small><b>${lm.license}</b></div></div>${ruler(lm.mem)}`;
+$('feed').innerHTML = P.feed.map(f => `<div class="story">${kick(f.entity, f.kind)} <span class="when">${f.date}</span><h3>${f.title}</h3></div>`).join('');
+const pts = P.movement.points;
+$('stand').innerHTML = `<div class="dots">${pts.map((p, i) => `<i class="${i === pts.length - 1 ? 'hl' : ''}" style="left:${(p[1] - 20) / 60 * 100}%" title="${p[2]}"></i>`).join('')}</div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3)"><span>20%</span><span>80%</span></div>
+  <table class="standings">${[...pts].reverse().slice(0, 4).map((p, i) => `<tr><td style="width:18px;color:var(--t3)">${i + 1}</td><td>${p[2]}</td><td style="text-align:right;font-weight:600">${p[1]}</td></tr>`).join('')}</table>`;
+$('voices').innerHTML = P.community.slice(0, 2).map(c => `<div class="voice">${c.entity === 'run' ? `<q>${c.value} ${c.unit} on ${c.where.split(' · ')[0]}</q>` : `<q>${c.title}</q>`}<div class="by">— @${c.who}, on ${c.what}</div></div>`).join('');
+$('models').innerHTML = P.models.map(m => `<article class="entry"><div>${kick('model', m.family)}<h3>${m.name}</h3><div class="by">${m.dev} · ${m.released}</div><div class="caps">${m.summary} ${m.caps.join(', ')}.</div></div>
+  <div><div style="font-size:12px;color:var(--t3)">Needs about <b style="color:var(--t1);font-size:15px">${Math.ceil(m.mem)} GB</b></div>${ruler(m.mem)}</div><div>${prof(m.profile)}</div>
+  <div style="font-size:13px"><div>${m.open ? 'Open license' : 'Restricted'}<br><span style="color:var(--t3)">${m.license}</span></div><div style="margin-top:6px;color:var(--t2)">${m.runs + m.reviews ? `${m.runs} runs, ${m.reviews} review` : '<span style="color:var(--t3)">No community notes</span>'}</div></div></article>`).join('');
+const D = P.model;
+$('detail').innerHTML = `<div>${kick('model', 'Model · ' + D.release)}<h2 style="font:600 40px/1 var(--serif);margin:6px 0">${D.name}</h2><p style="font:400 18px/1.45 var(--serif);color:var(--t2);margin:0">${D.sentence}</p>
+  <div class="factbox" style="grid-template-columns:repeat(4,1fr);margin-top:12px">${[['Size', D.params], ['Memory', `~${Math.ceil(D.mem)} GB`], ['Context', D.ctx], ['License', D.license]].map(([k, v]) => `<div><small>${k}</small><b>${v}</b></div>`).join('')}</div>${ruler(D.mem)}</div>
+  <div><div class="sec">Where it runs <span>${D.systems} of ${D.of}</span></div>${D.runsOn.map(([s, f]) => `<div style="display:flex;justify-content:space-between;border-bottom:1px dotted var(--line);padding:4px 0;font-size:14px"><span>${s}</span><span style="color:${f === 'full' ? '#9fcf9a' : f === 'tight' ? 'var(--hw)' : 'var(--t3)'}">${f === 'full' ? 'Runs well' : f === 'tight' ? 'Tight fit' : 'With offload'}</span></div>`).join('')}
+  <div class="sec" style="margin-top:14px">Scores <span>of best open model</span></div>${D.bench.map(([b, v, best]) => `<div style="display:grid;grid-template-columns:110px 1fr 40px;gap:10px;align-items:center;font-size:14px;padding:3px 0"><span>${b}</span><span style="border-top:3px solid var(--acc);width:${v / best * 100}%"></span><b>${v}</b></div>`).join('')}</div>`;
+</script>
+</body>
+</html>

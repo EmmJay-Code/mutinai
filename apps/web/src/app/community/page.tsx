@@ -30,16 +30,21 @@ export default async function CommunityPage({ searchParams }: { searchParams: SP
   return (
     <>
       <div className="page-head">
-        <div className="eyebrow">Community</div>
-        <h1>What people are running, measuring and recommending.</h1>
-        <p className="lede">Benchmark runs record exactly what was run and on what, so results can be compared and reproduced. Reviews rate specific qualities rather than a single score.</p>
-        <p className="meta" style={{ marginTop: 'var(--s4)' }}>
-          {stats.profiles} members · {stats.submissions} public runs ({stats.verified} verified) · {stats.reviews} reviews
-        </p>
+        <div>
+          <div className="eyebrow"><span className="glyph g-member" aria-hidden="true" /> Community</div>
+          <h1>What people are running, measuring and recommending.</h1>
+          <p className="lede">Runs record exactly what was run and on what, so results can be reproduced. Reviews rate specific qualities, not a single score.</p>
+        </div>
         <div className="page-head-actions">
-          <Link className="btn btn-primary" href="/contribute/benchmark">Submit a benchmark run</Link>
+          <Link className="btn btn-primary" href="/contribute/benchmark">Submit a run</Link>
           <Link className="btn" href="/contribute/review">Write a review</Link>
         </div>
+      </div>
+      <div className="run-summary">
+        <div><b>{stats.profiles}</b><span>members</span></div>
+        <div><b>{stats.submissions}</b><span>public runs</span></div>
+        <div><span className="fit fit-full" /><b>{stats.verified}</b><span>verified</span></div>
+        <div><b>{stats.reviews}</b><span>reviews</span></div>
       </div>
 
       {error && <div className="alert alert-error" role="alert">{error}</div>}
@@ -62,7 +67,7 @@ export default async function CommunityPage({ searchParams }: { searchParams: SP
         </Section>
       )}
 
-      <div className="split section">
+      <div className="split section-tight">
         <section aria-labelledby="runs-heading">
           <div className="section-head">
             <h2 id="runs-heading">Recent benchmark runs</h2>

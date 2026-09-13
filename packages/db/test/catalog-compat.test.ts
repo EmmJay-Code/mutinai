@@ -125,3 +125,37 @@ describe('model compatibility across reference systems', () => {
     expect(await compatQueries.compatForModelAcrossSystems(h.db, 'no-such-model', { contextLength: 8192 })).toEqual([]);
   });
 });
+
+describe('visual summaries', () => {
+  it('builds capability profiles relative to the best open result', async () => {
+    const profiles = await catalog.listCapabilityProfiles(h.db);
+    expect(profiles['deepseek-r1-671b']?.reasoning).toMatchObject({ score: 100, benchmark: 'gpqa-diamond' });
+    expect(profiles['qwen2-5-coder-32b']?.coding).toMatchObject({ score: 100, benchmark: 'humaneval', value: 92.7 });
+    expect(profiles['gemma-3-27b']?.instruction?.score).toBeGreaterThan(90);
+    expect(profiles['mixtral-8x7b']).toBeUndefined();
+  });
+
+  it('traces the benchmark frontier by release date', async () => {
+    const f = await catalog.benchmarkFrontier(h.db, 'gpqa-diamond');
+    expect(f?.points.map((p) => p.subject)).toEqual(['llama-3-1-8b-instruct', 'qwen2-5-32b-instruct', 'llama-3-3-70b-instruct', 'phi-4', 'deepseek-r1']);
+    expect(f?.points.at(-1)).toMatchObject({ value: 71.5, date: '2025-01-20', modelSlug: 'deepseek-r1-671b' });
+    expect(await catalog.benchmarkFrontier(h.db, 'no-such-benchmark')).toBeNull();
+  });
+
+  it('counts events per month with gaps filled', async () => {
+    const months = await catalog.eventActivityByMonth(h.db, 12);
+    expect(months).toHaveLength(12);
+    expect(months.at(-1)).toMatchObject({ month: '2025-04', count: 1 });
+    expect(months.find((m) => m.month === '2025-01')?.count).toBe(4);
+    expect(months.find((m) => m.month === '2024-10')?.count).toBe(0);
+  });
+
+  it('summarises reference-system compatibility for every model in one pass', async () => {
+    const summary = await compatQueries.compatSummaryByModel(h.db, { contextLength: 8192 });
+    expect(summary['llama-3-3-70b']).toMatchObject({ of: 13 });
+    const detailed = await compatQueries.compatForModelAcrossSystems(h.db, 'llama-3-3-70b', { contextLength: 8192 });
+    expect(summary['llama-3-3-70b']!.runsWell).toBe(detailed.filter((d) => d.best?.result.placement === 'accelerator').length);
+    expect(summary['deepseek-r1-671b']!.runsWell).toBe(0);
+    expect(Object.values(summary).every((s) => s.runsWell + s.slow + s.tooLarge === s.of)).toBe(true);
+  });
+});
