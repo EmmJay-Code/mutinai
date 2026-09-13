@@ -66,7 +66,7 @@ export async function seedCatalog(db: Executor): Promise<Registry> {
     reg.set('organization', o.slug, id);
   }
   for (const [namespace, value, slug] of catalog.organizationIdentifiers) {
-    await linkExternalId(db, { namespace, value, entityId: reg.get('organization', slug), url: namespace === 'huggingface-org' ? `https://huggingface.co/${value}` : `https://github.com/${value}` });
+    await linkExternalId(db, { namespace, value, entityId: reg.get('organization', slug), url: namespace === 'huggingface-org' ? `https://huggingface.co/${value}` : `https://github.com/${value}`, firstSeenRecordId: sourceRecordId });
   }
 
   for (const f of catalog.families) {
@@ -113,7 +113,7 @@ export async function seedCatalog(db: Executor): Promise<Registry> {
       aliases: [v.hf, hfBase(v.hf)], sourceRecordId,
     });
     reg.set('model_variant', v.slug, id);
-    await linkExternalId(db, { namespace: 'huggingface', value: v.hf, entityId: id, url: `https://huggingface.co/${v.hf}` });
+    await linkExternalId(db, { namespace: 'huggingface', value: v.hf, entityId: id, url: `https://huggingface.co/${v.hf}`, firstSeenRecordId: sourceRecordId });
 
     for (const a of v.artifacts) {
       const spec = typeof a === 'string' ? { scheme: a, publisher: undefined as string | undefined, repo: undefined as string | undefined } : a;
@@ -129,7 +129,7 @@ export async function seedCatalog(db: Executor): Promise<Registry> {
         sizeBytes: Math.round((model.paramsTotal * scheme.bitsPerWeight) / 8), sourceRepo: repo,
       });
       reg.set('model_artifact', slug, artifactId);
-      await linkExternalId(db, { namespace: 'huggingface-artifact', value: `${repo}:${scheme.name}`, entityId: artifactId, url: `https://huggingface.co/${repo}` });
+      await linkExternalId(db, { namespace: 'huggingface-artifact', value: `${repo}:${scheme.name}`, entityId: artifactId, url: `https://huggingface.co/${repo}`, firstSeenRecordId: sourceRecordId });
     }
   }
 
@@ -157,7 +157,7 @@ export async function seedCatalog(db: Executor): Promise<Registry> {
       repoUrl: `https://github.com/${p.repo}`, homepageUrl: p.homepage, primaryLanguage: p.language,
     });
     if (p.runtime) await db.insert(s.runtime).values({ projectId: id, ...p.runtime });
-    await linkExternalId(db, { namespace: 'github', value: p.repo.toLowerCase(), entityId: id, url: `https://github.com/${p.repo}` });
+    await linkExternalId(db, { namespace: 'github', value: p.repo.toLowerCase(), entityId: id, url: `https://github.com/${p.repo}`, firstSeenRecordId: sourceRecordId });
     reg.set('project', p.slug, id);
   }
 
