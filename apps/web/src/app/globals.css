@@ -532,6 +532,8 @@ legend { font-weight: 600; font-size: 13px; padding-right: 8px; }
 .alert { padding: 9px 12px; border-radius: var(--radius); margin-bottom: 12px; border-left: 3px solid var(--line-strong); background: var(--raised); font-size: 13px; }
 .alert-error { border-left-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
 .alert-ok { border-left-color: var(--ok); background: var(--ok-soft); color: var(--ok); }
+.alert-sample { border-left-color: var(--e-member); background: var(--danger-soft); color: var(--ink-2); }
+.alert-sample strong { color: var(--e-member); }
 
 /* ─── Community ──────────────────────────────────────────── */
 .review { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; padding: 12px 0; border-top: 1px solid var(--line); }

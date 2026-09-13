@@ -23,6 +23,7 @@ import { Avatar, CapabilityBars, EntityMark, FrontierChart, Heat, MemoryScale, M
 import { entityTypeOfEvent, EVENT_GROUPS } from '@/lib/events';
 import { entityHref, FORM_FACTOR_LABEL, formatDate, formatNumber, formatParams, humanize, isoDate } from '@/lib/format';
 import { bestDevicePrice, maxParamsAtQ4, roughParams } from '@/lib/hardware';
+import { communityContentIsSample } from '@/lib/session';
 
 const PREVIEW_SYSTEM = 'rtx-4090-workstation';
 
@@ -102,9 +103,13 @@ export default async function DiscoverPage() {
     ? models.filter((m) => m.releaseSlug === leadRelease.slug).sort((a, b) => b.reviewCount + b.runCount - (a.reviewCount + a.runCount) || b.paramsTotal - a.paramsTotal)[0]
     : undefined;
 
-  const activeModels = models.filter((m) => m.reviewCount + m.runCount > 0).sort((a, b) => b.reviewCount + b.runCount - (a.reviewCount + a.runCount)).slice(0, 3);
-  const featuredRuns = submissions.slice(0, 3);
-  const featuredReviews = [...reviews].sort((a, b) => b.helpfulScore - a.helpfulScore).slice(0, 2);
+  // Where no one can sign in, every community row came from the seed, and the seed's accounts and content are
+  // fictional. Sample content must never read as member activity on a public page, so the section shows none of it
+  // and says why instead. See `communityContentIsSample`.
+  const sampleCommunity = communityContentIsSample();
+  const activeModels = sampleCommunity ? [] : models.filter((m) => m.reviewCount + m.runCount > 0).sort((a, b) => b.reviewCount + b.runCount - (a.reviewCount + a.runCount)).slice(0, 3);
+  const featuredRuns = sampleCommunity ? [] : submissions.slice(0, 3);
+  const featuredReviews = sampleCommunity ? [] : [...reviews].sort((a, b) => b.helpfulScore - a.helpfulScore).slice(0, 2);
   const order = ['laptop', 'mini_pc', 'desktop', 'server'];
   const systemsByForm = Object.entries(
     picker.configurations.reduce<Record<string, typeof picker.configurations>>((acc, c) => ({ ...acc, [c.formFactor]: [...(acc[c.formFactor] ?? []), c] }), {}),
@@ -180,7 +185,9 @@ export default async function DiscoverPage() {
           <div><dt>Open-weight models tracked</dt><dd>{models.length}</dd></div>
           <div><dt>Releases &amp; launches in the last {FRESHNESS.recentDays} days</dt><dd>{recentReleaseCount}</dd></div>
           <div><dt>Best open GPQA Diamond score{best ? ` · ${best.name}` : ''}</dt><dd>{best ? best.value.toFixed(1) : '—'}<small>%</small></dd></div>
-          <div><dt>Verified community runs</dt><dd>{stats.verified}<small>of {stats.submissions}</small></dd></div>
+          {sampleCommunity
+            ? <div><dt>Tools &amp; runtimes tracked</dt><dd>{counts.project ?? 0}</dd></div>
+            : <div><dt>Verified community runs</dt><dd>{stats.verified}<small>of {stats.submissions}</small></dd></div>}
         </dl>
         <ul className="why" aria-label="Why run open models yourself">
           {OPEN_VALUE.map((v) => (
@@ -328,7 +335,9 @@ export default async function DiscoverPage() {
         <div className="signal">
           <p className="signal-note">
             <Basis kind="community">Community</Basis>{' '}
-            Written and measured by members — kept separate from the sourced facts everywhere else on this page, and never merged into them.
+            {sampleCommunity
+              ? 'Runs and reviews written by members will appear here, kept separate from the sourced facts everywhere else on this page and never merged into them.'
+              : 'Written and measured by members — kept separate from the sourced facts everywhere else on this page, and never merged into them.'}
           </p>
           {featuredRuns.length || featuredReviews.length ? (
             <div className="signal-grid">
@@ -379,9 +388,10 @@ export default async function DiscoverPage() {
               </Placeholder>
             </div>
           ) : (
-            <Placeholder title="Nothing from the community yet">
-              Member runs and reviews appear here as soon as they are submitted. Mutinai shows no discussion, ratings or sentiment
-              until real contributions exist — an empty section is more useful than an invented one.
+            <Placeholder title={sampleCommunity ? 'Contributions are not open yet' : 'Nothing from the community yet'}>
+              {sampleCommunity
+                ? 'This preview has no sign-in, so nothing here could have been written by a member: the accounts, runs and reviews in its database are fictional sample content, and are left out rather than dressed up as activity. Real runs, reviews and discussion appear here once contributions open.'
+                : 'Member runs and reviews appear here as soon as they are submitted. Mutinai shows no discussion, ratings or sentiment until real contributions exist — an empty section is more useful than an invented one.'}
             </Placeholder>
           )}
         </div>
