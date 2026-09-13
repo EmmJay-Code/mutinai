@@ -32,6 +32,7 @@ import {
   FileSystemObjectStore,
   GITHUB_API_HEADERS,
   HttpClient,
+  HttpError,
   IngestionBusyError,
   RateLimitError,
   REVIEW_REASONS,
@@ -321,9 +322,13 @@ try {
     process.exitCode = 1;
   }
 } catch (error) {
+  // Expected operational failures get a one-line message and a non-zero exit, not a stack trace.
   if (error instanceof IngestionBusyError || error instanceof RateLimitError) {
     log(error.message);
     process.exitCode = 2;
+  } else if (error instanceof HttpError) {
+    log(`source request failed: ${error.message}`);
+    process.exitCode = 1;
   } else throw error;
 } finally {
   await close();
