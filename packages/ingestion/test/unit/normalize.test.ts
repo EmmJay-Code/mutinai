@@ -22,7 +22,7 @@ describe('Hugging Face normalization', () => {
         type: 'variant',
         name: 'Hermes 3 Llama 3.1 8B',
         derivation: 'fine_tune',
-        base: { namespace: 'huggingface', value: 'meta-llama/Llama-3.1-8B' },
+        bases: [{ namespace: 'huggingface', value: 'meta-llama/Llama-3.1-8B', url: 'https://huggingface.co/meta-llama/Llama-3.1-8B' }],
         publisher: expect.objectContaining({ identifier: expect.objectContaining({ namespace: 'huggingface-org', value: 'NousResearch' }) }),
         licenseKey: 'llama3',
         capabilities: ['chat', 'tool_use'],
@@ -44,7 +44,7 @@ describe('Hugging Face normalization', () => {
 
   it('first-party repos without a base produce a variant with no derivation', () => {
     const [rec] = normalizeHuggingFaceModel(raw({ id: 'meta-llama/Llama-3.1-8B-Instruct', tags: [] }));
-    expect(rec).toMatchObject({ type: 'variant', derivation: undefined, base: undefined });
+    expect(rec).toMatchObject({ type: 'variant', derivation: undefined, bases: undefined, suggestedKind: 'instruct' });
   });
 
   it('throws on invalid repo ids', () => {

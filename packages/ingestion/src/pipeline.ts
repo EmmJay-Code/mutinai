@@ -1,13 +1,14 @@
 /**
- * Ingestion pipeline: fetch → snapshot → dedupe → normalize → resolve → upsert → provenance → emit.
- * Each raw item is processed in its own transaction and is idempotent.
+ * Ingestion pipeline: fetch → snapshot → dedupe → normalize → resolve → upsert → provenance → review → emit.
+ * Each raw item is processed in its own transaction and is idempotent. See docs/adr/0005 and docs/adr/0008.
  */
-import { slugify, type Capability, type RelationPredicate } from '@mutinai/domain';
+import { slugify, type Capability, type RelationPredicate, type VariantKind } from '@mutinai/domain';
 import {
   addAliases,
   createArtifact,
   createEntity,
   createVariant,
+  developerOfModel,
   ensureSource,
   jobs,
   linkExternalId,
@@ -17,10 +18,25 @@ import {
   type Database,
   type Executor,
 } from '@mutinai/db';
-import { and, eq, sql } from 'drizzle-orm';
-import type { ArtifactSetRecord, EventRecord, FetchContext, Identifier, NormalizedRecord, OrganizationRef, ProjectRecord, RawItem, SourceAdapter, VariantRecord } from './adapter';
+import type { ReviewCandidate } from '@mutinai/db/schema';
+import { and, eq, notInArray, sql } from 'drizzle-orm';
+import type {
+  ArtifactSetRecord,
+  EventRecord,
+  FetchContext,
+  Identifier,
+  NormalizedRecord,
+  OrganizationRef,
+  ProjectRecord,
+  RawItem,
+  ReleaseInfo,
+  SourceAdapter,
+  UnsupportedRecord,
+  ValidatorCache,
+  VariantRecord,
+} from './adapter';
 import { canonicalJson, sha256 } from './hash';
-import type { ObjectStore } from './object-store';
+import { MemoryObjectStore, type ObjectStore } from './object-store';
 
 export interface PipelineDeps {
   db: Database;
@@ -32,18 +48,58 @@ export interface RunStats {
   seen: number;
   new: number;
   unchanged: number;
+  /** Previously unresolved snapshots evaluated again because they were seen again. */
+  rechecked: number;
+  /** Rechecked snapshots that now apply cleanly. */
+  resolved: number;
+  /** New or rechecked items still blocked on review after this run. */
   unresolved: number;
   failed: number;
   entitiesCreated: number;
   fieldsUpdated: number;
   eventsCreated: number;
+  eventsUpdated: number;
   jobsEnqueued: number;
+  reviewItems: number;
+  metrics: number;
+}
+
+/** Why an item needs an editor. Stable codes: they key review items and appear in tooling. */
+export const REVIEW_REASONS = {
+  new_first_party_model: 'New model with no declared parent weights; needs family/release/model structure',
+  first_party_variant_kind: 'First-party post-trained weights; the variant kind (instruct, reasoning, …) needs confirming',
+  possible_reupload: 'Same name as a known variant from another publisher; likely a re-upload, not a new variant',
+  unknown_base: 'Declared parent weights are not a known variant',
+  base_not_variant: 'Declared parent resolves to something other than a variant',
+  merge_across_models: 'Merge of parents from different models',
+  unknown_quantization: 'Quantized files with a scheme Mutinai does not know',
+  unknown_project: 'Repository is not a known project; needs categorisation',
+  unmapped_license: 'License identifier has no Mutinai license record',
+  new_organization: 'Organization created from a source; its kind needs confirming',
+  fact_conflict: 'Source-reported fact differs from the canonical value',
+  unsupported_repo: 'Published item Mutinai does not model (e.g. a LoRA adapter)',
+  source_unavailable: 'Source no longer serves an item that was previously ingested',
+  ontology_rejected: 'Rejected by ontology validation',
+} as const;
+export type ReviewReason = keyof typeof REVIEW_REASONS;
+
+export interface ReviewRequest {
+  reason: ReviewReason;
+  subject?: string;
+  detail: string;
+  /** Blocking reviews leave the snapshot unresolved (re-evaluated when seen again). Default true. */
+  blocking?: boolean;
+  candidates?: ReviewCandidate[];
+  suggestion?: Record<string, unknown>;
 }
 
 export interface ItemOutcome {
-  status: 'processed' | 'unresolved' | 'unchanged' | 'failed';
+  status: 'processed' | 'unresolved' | 'unchanged' | 'failed' | 'rechecked' | 'resolved';
   details: string[];
+  reviews: ReviewRequest[];
 }
+
+export class IngestionBusyError extends Error {}
 
 interface ApplyContext {
   tx: Executor;
@@ -53,12 +109,17 @@ interface ApplyContext {
   touched: Map<string, 'variant' | 'artifact' | 'other'>;
   details: string[];
   unresolved: boolean;
+  /** Shared across a snapshot's records (keyed by reason + subject). */
+  reviews: Map<string, ReviewRequest>;
   stats: RunStats;
 }
 
-const emptyStats = (): RunStats => ({ seen: 0, new: 0, unchanged: 0, unresolved: 0, failed: 0, entitiesCreated: 0, fieldsUpdated: 0, eventsCreated: 0, jobsEnqueued: 0 });
+export const emptyStats = (): RunStats => ({
+  seen: 0, new: 0, unchanged: 0, rechecked: 0, resolved: 0, unresolved: 0, failed: 0,
+  entitiesCreated: 0, fieldsUpdated: 0, eventsCreated: 0, eventsUpdated: 0, jobsEnqueued: 0, reviewItems: 0, metrics: 0,
+});
 
-/** Licence identifiers used by sources (HF card metadata, SPDX) → Mutinai licence keys. */
+/** Licence identifiers used by sources (HF card metadata, SPDX) → Mutinai licence keys. Unmapped keys are reviewed, not guessed. */
 const LICENSE_ALIASES: Record<string, string> = {
   'apache-2.0': 'apache-2.0',
   mit: 'mit',
@@ -68,7 +129,15 @@ const LICENSE_ALIASES: Record<string, string> = {
   gemma: 'gemma-terms',
 };
 
-export async function runAdapter(deps: PipelineDeps, adapter: SourceAdapter, ctx: FetchContext = {}): Promise<{ runId: string; stats: RunStats }> {
+/** Runs whose process died stay `running`; after this long they are marked abandoned so the source can run again. */
+const ABANDON_AFTER_HOURS = 6;
+
+export interface RunOptions {
+  /** Recorded on the ingestion run for audit (CLI flags, selection). */
+  options?: Record<string, unknown>;
+}
+
+export async function runAdapter(deps: PipelineDeps, adapter: SourceAdapter, ctx: FetchContext = {}, opts: RunOptions = {}): Promise<{ runId: string; stats: RunStats }> {
   const sourceId = await ensureSource(deps.db, {
     key: adapter.source.key,
     name: adapter.source.name,
@@ -76,29 +145,70 @@ export async function runAdapter(deps: PipelineDeps, adapter: SourceAdapter, ctx
     baseUrl: adapter.source.baseUrl,
     priority: adapter.source.priority,
   });
-  const [run] = await deps.db.insert(s.ingestionRun).values({ sourceId }).returning({ id: s.ingestionRun.id });
-  const stats = emptyStats();
+  await deps.db.execute(sql`
+    update ingest.ingestion_run set status = 'abandoned', finished_at = now(), error = 'abandoned: still running after ${sql.raw(String(ABANDON_AFTER_HOURS))}h'
+    where source_id = ${sourceId} and status = 'running' and started_at < now() - make_interval(hours => ${ABANDON_AFTER_HOURS})`);
+  let runId: string;
   try {
-    for await (const item of adapter.fetch(ctx)) {
+    const [run] = await deps.db.insert(s.ingestionRun).values({ sourceId, options: opts.options ?? {} }).returning({ id: s.ingestionRun.id });
+    runId = run!.id;
+  } catch (error) {
+    if (isUniqueViolation(error, 'ingestion_run_one_running')) throw new IngestionBusyError(`another ${adapter.source.key} ingestion is already running`);
+    throw error;
+  }
+
+  const stats = emptyStats();
+  const fetchCtx: FetchContext = { log: deps.log, validators: dbValidatorCache(deps.db, sourceId), ...ctx };
+  try {
+    for await (const item of adapter.fetch(fetchCtx)) {
+      if (ctx.limit != null && stats.seen >= ctx.limit) break;
       stats.seen += 1;
-      const outcome = await processItem(deps, adapter, sourceId, run!.id, item, stats);
+      const outcome = await processItem(deps, adapter, sourceId, runId, item, stats);
       if (outcome.status === 'unchanged') stats.unchanged += 1;
       else if (outcome.status === 'failed') stats.failed += 1;
-      else {
+      else if (outcome.status === 'rechecked' || outcome.status === 'resolved') {
+        stats.rechecked += 1;
+        if (outcome.status === 'resolved') stats.resolved += 1;
+        else stats.unresolved += 1;
+      } else {
         stats.new += 1;
         if (outcome.status === 'unresolved') stats.unresolved += 1;
       }
+      await recordMetrics(deps.db, sourceId, item, stats);
       deps.log?.(`[${adapter.source.key}] ${item.externalId}: ${outcome.status}${outcome.details.length ? ` — ${outcome.details.join('; ')}` : ''}`);
     }
-    await deps.db.update(s.ingestionRun).set({ status: 'succeeded', finishedAt: new Date(), stats: { ...stats } }).where(eq(s.ingestionRun.id, run!.id));
+    await deps.db.update(s.ingestionRun).set({ status: 'succeeded', finishedAt: new Date(), stats: { ...stats } }).where(eq(s.ingestionRun.id, runId));
   } catch (error) {
     await deps.db
       .update(s.ingestionRun)
-      .set({ status: 'failed', finishedAt: new Date(), stats: { ...stats }, error: String(error) })
-      .where(eq(s.ingestionRun.id, run!.id));
+      .set({ status: 'failed', finishedAt: new Date(), stats: { ...stats }, error: String(error).slice(0, 4000) })
+      .where(eq(s.ingestionRun.id, runId));
     throw error;
   }
-  return { runId: run!.id, stats };
+  return { runId, stats };
+}
+
+class DryRunRollback extends Error {
+  constructor(readonly result: { runId: string; stats: RunStats }) {
+    super('dry run');
+  }
+}
+
+/**
+ * Runs the full pipeline (resolution, review, jobs) inside one transaction and rolls it back, so the result shows
+ * exactly what a real run would do without persisting anything. Raw snapshots go to a throwaway memory store.
+ */
+export async function dryRunAdapter(deps: PipelineDeps, adapter: SourceAdapter, ctx: FetchContext = {}, opts: RunOptions = {}) {
+  try {
+    await deps.db.transaction(async (tx) => {
+      const result = await runAdapter({ ...deps, db: tx as unknown as Database, store: new MemoryObjectStore() }, adapter, ctx, { options: { ...opts.options, dryRun: true } });
+      throw new DryRunRollback(result);
+    });
+  } catch (error) {
+    if (error instanceof DryRunRollback) return error.result;
+    throw error;
+  }
+  throw new Error('unreachable');
 }
 
 export async function processItem(deps: PipelineDeps, adapter: SourceAdapter, sourceId: string, runId: string | null, item: RawItem, stats = emptyStats()): Promise<ItemOutcome> {
@@ -107,6 +217,7 @@ export async function processItem(deps: PipelineDeps, adapter: SourceAdapter, so
   const objectKey = `sources/${adapter.source.key}/${contentHash.slice(0, 2)}/${contentHash}.json`;
   // Content-addressed and idempotent, so it is safe outside the transaction.
   await deps.store.put(objectKey, new TextEncoder().encode(body), item.contentType);
+  const snapshot = { sourceId, externalId: item.externalId, contentHash, objectKey, contentType: item.contentType, url: item.url, fetchedAt: item.fetchedAt, runId };
 
   let records: NormalizedRecord[];
   try {
@@ -114,35 +225,43 @@ export async function processItem(deps: PipelineDeps, adapter: SourceAdapter, so
   } catch (error) {
     const inserted = await deps.db
       .insert(s.sourceRecord)
-      .values({ sourceId, externalId: item.externalId, contentHash, objectKey, contentType: item.contentType, url: item.url, fetchedAt: item.fetchedAt, status: 'failed', statusDetail: `normalize: ${String(error)}`, runId })
+      .values({ ...snapshot, status: 'failed', statusDetail: `normalize: ${String(error)}`.slice(0, 4000) })
       .onConflictDoNothing()
       .returning({ id: s.sourceRecord.id });
-    return inserted.length ? { status: 'failed', details: [String(error)] } : { status: 'unchanged', details: [] };
+    if (!inserted.length) await touchSnapshot(deps.db, sourceId, item.externalId, contentHash);
+    return inserted.length ? { status: 'failed', details: [String(error)], reviews: [] } : { status: 'unchanged', details: [], reviews: [] };
   }
 
   return deps.db.transaction(async (tx) => {
-    const inserted = await tx
-      .insert(s.sourceRecord)
-      .values({ sourceId, externalId: item.externalId, contentHash, objectKey, contentType: item.contentType, url: item.url, fetchedAt: item.fetchedAt, status: 'processed', runId })
-      .onConflictDoNothing()
-      .returning({ id: s.sourceRecord.id });
-    if (!inserted.length) return { status: 'unchanged' as const, details: [] };
+    let recordId: string;
+    let recheck = false;
+    const inserted = await tx.insert(s.sourceRecord).values({ ...snapshot, status: 'processed' }).onConflictDoNothing().returning({ id: s.sourceRecord.id });
+    if (inserted.length) recordId = inserted[0]!.id;
+    else {
+      const existing = await touchSnapshot(tx, sourceId, item.externalId, contentHash);
+      // Unchanged snapshots are skipped, except unresolved ones: what blocked them (an unknown base, a missing
+      // scheme) may exist now, and re-evaluation is idempotent.
+      if (existing?.status !== 'unresolved') return { status: 'unchanged' as const, details: [], reviews: [] };
+      recordId = existing.id;
+      recheck = true;
+    }
 
     const ctx: ApplyContext = {
       tx,
       sourceKey: adapter.source.key,
-      sourceRecordId: inserted[0]!.id,
+      sourceRecordId: recordId,
       priority: adapter.source.priority,
       touched: new Map(),
       details: [],
       unresolved: false,
+      reviews: new Map(),
       stats,
     };
 
     for (const record of records) {
       // Each record runs in a savepoint with its own `touched` set, merged only if the savepoint commits,
       // so rolled-back work never emits downstream jobs.
-      const recordCtx: ApplyContext = { ...ctx, touched: new Map() };
+      const recordCtx: ApplyContext = { ...ctx, touched: new Map(), unresolved: false };
       try {
         await tx.transaction(async (sp) => {
           recordCtx.tx = sp;
@@ -152,8 +271,7 @@ export async function processItem(deps: PipelineDeps, adapter: SourceAdapter, so
         if (recordCtx.unresolved) ctx.unresolved = true;
       } catch (error) {
         if (!(error instanceof OntologyError)) throw error;
-        ctx.unresolved = true;
-        ctx.details.push(`rejected by ontology validation: ${error.message}`);
+        raise(ctx, { reason: 'ontology_rejected', subject: 'identifier' in record ? record.identifier.value : '', detail: `rejected by ontology validation: ${error.message}` });
       }
     }
 
@@ -170,9 +288,112 @@ export async function processItem(deps: PipelineDeps, adapter: SourceAdapter, so
     await tx
       .update(s.sourceRecord)
       .set({ status, statusDetail: ctx.details.length ? ctx.details.join('\n').slice(0, 4000) : null })
-      .where(eq(s.sourceRecord.id, ctx.sourceRecordId));
-    return { status, details: ctx.details } as ItemOutcome;
+      .where(eq(s.sourceRecord.id, recordId));
+    await syncReviewItems(tx, sourceId, item.externalId, recordId, [...ctx.reviews.values()], stats);
+    const outcome: ItemOutcome['status'] = recheck ? (status === 'processed' ? 'resolved' : 'rechecked') : status;
+    return { status: outcome, details: ctx.details, reviews: [...ctx.reviews.values()] };
   });
+}
+
+async function touchSnapshot(db: Executor, sourceId: string, externalId: string, contentHash: string) {
+  const [row] = await db
+    .update(s.sourceRecord)
+    .set({ lastSeenAt: new Date() })
+    .where(and(eq(s.sourceRecord.sourceId, sourceId), eq(s.sourceRecord.externalId, externalId), eq(s.sourceRecord.contentHash, contentHash)))
+    .returning({ id: s.sourceRecord.id, status: s.sourceRecord.status });
+  return row;
+}
+
+function raise(ctx: ApplyContext, review: ReviewRequest): void {
+  const key = `${review.reason}|${review.subject ?? ''}`;
+  ctx.reviews.set(key, review);
+  ctx.details.push(review.detail);
+  if (review.blocking ?? true) ctx.unresolved = true;
+}
+
+/**
+ * Upserts the review items raised by the latest evaluation of an item and closes open ones it no longer raises.
+ * Dismissed/resolved items stay closed when raised again (editors decided); superseded ones reopen.
+ */
+async function syncReviewItems(tx: Executor, sourceId: string, externalId: string, recordId: string, reviews: ReviewRequest[], stats: RunStats) {
+  for (const r of reviews) {
+    const values = {
+      sourceId,
+      externalId,
+      reason: r.reason,
+      subject: r.subject ?? '',
+      detail: r.detail.slice(0, 4000),
+      blocking: (r.blocking ?? true) ? 1 : 0,
+      candidates: r.candidates ?? [],
+      suggestion: r.suggestion ?? {},
+      firstSourceRecordId: recordId,
+      lastSourceRecordId: recordId,
+    };
+    await tx
+      .insert(s.reviewItem)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [s.reviewItem.sourceId, s.reviewItem.externalId, s.reviewItem.reason, s.reviewItem.subject],
+        set: {
+          detail: values.detail,
+          blocking: values.blocking,
+          candidates: values.candidates,
+          suggestion: values.suggestion,
+          lastSourceRecordId: recordId,
+          updatedAt: new Date(),
+          status: sql`case when ${s.reviewItem.status} = 'superseded' then 'open'::ingest.review_status else ${s.reviewItem.status} end`,
+          resolvedAt: sql`case when ${s.reviewItem.status} = 'superseded' then null else ${s.reviewItem.resolvedAt} end`,
+        },
+      });
+    stats.reviewItems += 1;
+  }
+  const raisedKeys = reviews.map((r) => `${r.reason}|${r.subject ?? ''}`);
+  await tx
+    .update(s.reviewItem)
+    .set({ status: 'superseded', resolution: 'no longer raised by the latest snapshot', resolvedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(s.reviewItem.sourceId, sourceId),
+        eq(s.reviewItem.externalId, externalId),
+        eq(s.reviewItem.status, 'open'),
+        raisedKeys.length ? notInArray(sql<string>`${s.reviewItem.reason} || '|' || ${s.reviewItem.subject}`, raisedKeys) : sql`true`,
+      ),
+    );
+}
+
+async function recordMetrics(db: Executor, sourceId: string, item: RawItem, stats: RunStats) {
+  for (const m of item.metrics ?? []) {
+    const entityId = await resolveIdentifier(db, m.identifier);
+    if (!entityId) continue;
+    const observedOn = item.fetchedAt.toISOString().slice(0, 10);
+    for (const [metric, value] of Object.entries(m.values)) {
+      if (!Number.isFinite(value)) continue;
+      await db
+        .insert(s.entityMetric)
+        .values({ entityId, metric, sourceId, observedOn, value, observedAt: item.fetchedAt })
+        .onConflictDoUpdate({ target: [s.entityMetric.entityId, s.entityMetric.metric, s.entityMetric.sourceId, s.entityMetric.observedOn], set: { value, observedAt: item.fetchedAt } });
+      stats.metrics += 1;
+    }
+  }
+}
+
+function dbValidatorCache(db: Executor, sourceId: string): ValidatorCache {
+  return {
+    async get(url) {
+      const [row] = await db.select({ etag: s.httpValidator.etag, lastModified: s.httpValidator.lastModified }).from(s.httpValidator).where(and(eq(s.httpValidator.sourceId, sourceId), eq(s.httpValidator.url, url)));
+      return row ? { etag: row.etag ?? undefined, lastModified: row.lastModified ?? undefined } : null;
+    },
+    async set(url, v) {
+      const values = { sourceId, url, etag: v.etag ?? null, lastModified: v.lastModified ?? null, updatedAt: new Date() };
+      await db.insert(s.httpValidator).values(values).onConflictDoUpdate({ target: [s.httpValidator.sourceId, s.httpValidator.url], set: { etag: values.etag, lastModified: values.lastModified, updatedAt: values.updatedAt } });
+    },
+  };
+}
+
+function isUniqueViolation(error: unknown, constraint: string): boolean {
+  const e = error as { code?: string; constraint_name?: string; cause?: { code?: string; constraint_name?: string } };
+  const pg = e?.code ? e : e?.cause;
+  return pg?.code === '23505' && (!pg.constraint_name || pg.constraint_name === constraint);
 }
 
 async function applyRecord(ctx: ApplyContext, record: NormalizedRecord): Promise<void> {
@@ -185,6 +406,8 @@ async function applyRecord(ctx: ApplyContext, record: NormalizedRecord): Promise
       return applyProject(ctx, record);
     case 'event':
       return applyEvent(ctx, record);
+    case 'unsupported':
+      return applyUnsupported(ctx, record);
   }
 }
 
@@ -206,13 +429,33 @@ async function resolveAlias(tx: Executor, name: string, kinds: string[]): Promis
   return rows.length === 1 ? rows[0]! : null;
 }
 
-async function resolveOrCreateOrganization(ctx: ApplyContext, ref: OrganizationRef): Promise<string> {
+/** Plausible existing entities for an editor to consider: exact alias matches first, then name similarity. Never applied. */
+async function findCandidates(tx: Executor, name: string, kinds: string[], limit = 5): Promise<ReviewCandidate[]> {
+  const normalized = normalizeAlias(name);
+  if (!normalized) return [];
+  const rows = await tx.execute<{ id: string; kind: string; slug: string; name: string; exact: boolean; sim: number }>(sql`
+    select e.id, e.kind::text as kind, e.slug, e.name,
+      exists (select 1 from ecosystem.entity_alias a where a.entity_id = e.id and a.normalized = ${normalized}) as exact,
+      similarity(e.name, ${name})::float8 as sim
+    from ecosystem.entity e
+    where e.kind::text in (${sql.join(kinds.map((k) => sql`${k}`), sql`, `)})
+      and (e.name % ${name} or exists (select 1 from ecosystem.entity_alias a where a.entity_id = e.id and a.normalized = ${normalized}))
+    order by exact desc, sim desc limit ${limit}`);
+  return rows.map((r) => ({ entityId: r.id, kind: r.kind, slug: r.slug, name: r.name, basis: r.exact ? 'exact alias match' : `name similarity ${r.sim.toFixed(2)}` }));
+}
+
+const repoName = (id: Identifier) => id.value.split('/').pop() ?? id.value;
+
+async function findOrganization(tx: Executor, ref: OrganizationRef): Promise<string | null> {
   if (ref.identifier) {
-    const found = await resolveIdentifier(ctx.tx, ref.identifier);
+    const found = await resolveIdentifier(tx, ref.identifier);
     if (found) return found;
   }
-  const byAlias = await resolveAlias(ctx.tx, ref.name, ['organization']);
-  let orgId = byAlias?.id;
+  return (await resolveAlias(tx, ref.name, ['organization']))?.id ?? null;
+}
+
+async function resolveOrCreateOrganization(ctx: ApplyContext, ref: OrganizationRef): Promise<string> {
+  let orgId = await findOrganization(ctx.tx, ref);
   if (!orgId) {
     let slug = slugify(ref.name);
     const [clash] = await ctx.tx.select({ id: s.entity.id }).from(s.entity).where(and(eq(s.entity.kind, 'organization'), eq(s.entity.slug, slug)));
@@ -221,7 +464,7 @@ async function resolveOrCreateOrganization(ctx: ApplyContext, ref: OrganizationR
     await ctx.tx.insert(s.organization).values({ id: orgId, orgKind: 'community' });
     ctx.stats.entitiesCreated += 1;
     ctx.touched.set(orgId, 'other');
-    ctx.details.push(`created organization ${ref.name} (kind needs editorial review)`);
+    raise(ctx, { reason: 'new_organization', subject: ref.name, blocking: false, detail: `created organization ${ref.name} (kind needs editorial review)`, suggestion: { identifier: ref.identifier?.value } });
   }
   if (ref.identifier) await linkExternalId(ctx.tx, { ...ref.identifier, entityId: orgId, firstSeenRecordId: ctx.sourceRecordId });
   return orgId;
@@ -265,12 +508,16 @@ async function assertField(ctx: ApplyContext, entityId: string, field: string, v
   }
 }
 
-async function licenseIdFor(tx: Executor, key: string | undefined): Promise<string | null> {
+/** Maps a source licence key. Absent → null; present but unmapped → null plus an advisory review (never guessed). */
+async function licenseIdFor(ctx: ApplyContext, key: string | undefined): Promise<string | null> {
   if (!key) return null;
   const mapped = LICENSE_ALIASES[key.toLowerCase()];
-  if (!mapped) return null;
-  const [row] = await tx.select({ id: s.license.id }).from(s.license).where(eq(s.license.key, mapped));
-  return row?.id ?? null;
+  const [row] = mapped ? await ctx.tx.select({ id: s.license.id }).from(s.license).where(eq(s.license.key, mapped)) : [];
+  if (!row) {
+    raise(ctx, { reason: 'unmapped_license', subject: key.toLowerCase(), blocking: false, detail: `license "${key}" has no Mutinai license record` });
+    return null;
+  }
+  return row.id;
 }
 
 // ─── Record handlers ─────────────────────────────────────────────────────────
@@ -281,10 +528,36 @@ const LINEAGE: Record<NonNullable<VariantRecord['derivation']>, RelationPredicat
   distill: 'distilled_from',
 };
 
+/** Relative difference above which a source-reported architecture fact is flagged against the canonical model. */
+const FACT_TOLERANCE = 0.03;
+
+async function checkObservedFacts(ctx: ApplyContext, variantId: string, r: VariantRecord) {
+  const o = r.observed;
+  if (!o) return;
+  const [m] = await ctx.tx
+    .select({ paramsTotal: s.model.paramsTotal, contextLength: s.model.contextLength, layers: s.model.layers, kvHeads: s.model.kvHeads })
+    .from(s.modelVariant)
+    .innerJoin(s.model, eq(s.model.id, s.modelVariant.modelId))
+    .where(eq(s.modelVariant.id, variantId));
+  if (!m) return;
+  const conflicts: Record<string, { canonical: number; observed: number }> = {};
+  if (o.paramsTotal && Math.abs(o.paramsTotal - m.paramsTotal) / m.paramsTotal > FACT_TOLERANCE) conflicts.paramsTotal = { canonical: m.paramsTotal, observed: o.paramsTotal };
+  if (o.layers && o.layers !== m.layers) conflicts.layers = { canonical: m.layers, observed: o.layers };
+  if (o.kvHeads && o.kvHeads !== m.kvHeads) conflicts.kvHeads = { canonical: m.kvHeads, observed: o.kvHeads };
+  if (!Object.keys(conflicts).length) return;
+  raise(ctx, {
+    reason: 'fact_conflict',
+    subject: Object.keys(conflicts).sort().join(','),
+    blocking: false,
+    detail: `source-reported ${Object.entries(conflicts).map(([k, v]) => `${k}=${v.observed} (canonical ${v.canonical})`).join(', ')}`,
+    suggestion: { conflicts, note: 'Parameter totals from safetensors metadata include vision encoders and MTP layers; confirm before changing canonical data.' },
+  });
+}
+
 async function applyVariant(ctx: ApplyContext, r: VariantRecord): Promise<void> {
   const existing = await resolveIdentifier(ctx.tx, r.identifier);
   if (existing) {
-    const licenseId = await licenseIdFor(ctx.tx, r.licenseKey);
+    const licenseId = await licenseIdFor(ctx, r.licenseKey);
     if (licenseId) {
       await assertField(ctx, existing, 'license', r.licenseKey, async () =>
         (await ctx.tx.update(s.modelVariant).set({ licenseId }).where(sql`${s.modelVariant.id} = ${existing} and ${s.modelVariant.licenseId} is distinct from ${licenseId}`).returning({ id: s.modelVariant.id })).length > 0,
@@ -295,28 +568,60 @@ async function applyVariant(ctx: ApplyContext, r: VariantRecord): Promise<void> 
         (await ctx.tx.update(s.entity).set({ summary: r.summary }).where(sql`${s.entity.id} = ${existing} and ${s.entity.summary} is distinct from ${r.summary}`).returning({ id: s.entity.id })).length > 0,
       );
     }
+    await checkObservedFacts(ctx, existing, r);
     ctx.touched.set(existing, 'variant');
     return;
   }
 
-  if (!r.base || !r.derivation) {
-    ctx.unresolved = true;
-    ctx.details.push(`${r.identifier.value}: new first-party model; requires editorial architecture data`);
+  const bases = r.bases ?? [];
+  const suggestion = { suggestedKind: r.suggestedKind, licenseKey: r.licenseKey, releasedOn: r.releasedOn, observed: r.observed, publisher: r.publisher.identifier?.value ?? r.publisher.name };
+  if (!bases.length || !r.derivation) {
+    const candidates = await findCandidates(ctx.tx, repoName(r.identifier), ['model_variant']);
+    const exact = candidates.filter((c) => c.basis === 'exact alias match');
+    const publisherId = await findOrganization(ctx.tx, r.publisher);
+    if (exact.length) {
+      const [pub] = await ctx.tx.select({ publisherOrgId: s.modelVariant.publisherOrgId }).from(s.modelVariant).where(eq(s.modelVariant.id, exact[0]!.entityId));
+      if (pub && pub.publisherOrgId !== publisherId) {
+        raise(ctx, { reason: 'possible_reupload', detail: `${r.identifier.value}: same name as known variant ${exact[0]!.slug} from another publisher; not created`, candidates: exact, suggestion });
+        return;
+      }
+    }
+    raise(ctx, { reason: 'new_first_party_model', detail: `${r.identifier.value}: new first-party model; requires editorial architecture data`, candidates, suggestion });
     return;
   }
-  const baseId = await resolveIdentifier(ctx.tx, r.base);
-  if (!baseId) {
-    ctx.unresolved = true;
-    ctx.details.push(`${r.identifier.value}: base ${r.base.value} is not a known variant`);
+
+  const parents: { identifier: Identifier; id: string; modelId: string; capabilities: Capability[] }[] = [];
+  for (const base of bases) {
+    const baseId = await resolveIdentifier(ctx.tx, base);
+    if (!baseId) {
+      raise(ctx, { reason: 'unknown_base', subject: base.value, detail: `${r.identifier.value}: base ${base.value} is not a known variant`, candidates: await findCandidates(ctx.tx, repoName(base), ['model_variant']), suggestion });
+      continue;
+    }
+    const [row] = await ctx.tx.select({ modelId: s.modelVariant.modelId, capabilities: s.modelVariant.capabilities }).from(s.modelVariant).where(eq(s.modelVariant.id, baseId));
+    if (!row) {
+      raise(ctx, { reason: 'base_not_variant', subject: base.value, detail: `${r.identifier.value}: base ${base.value} resolves to a non-variant entity` });
+      continue;
+    }
+    parents.push({ identifier: base, id: baseId, modelId: row.modelId, capabilities: row.capabilities });
+  }
+  if (parents.length !== bases.length) return;
+  const modelIds = new Set(parents.map((p) => p.modelId));
+  if (modelIds.size > 1) {
+    raise(ctx, { reason: 'merge_across_models', detail: `${r.identifier.value}: parents belong to ${modelIds.size} different models`, suggestion: { parents: bases.map((b) => b.value) } });
     return;
   }
-  const [base] = await ctx.tx
-    .select({ modelId: s.modelVariant.modelId, capabilities: s.modelVariant.capabilities, licenseId: s.modelVariant.licenseId })
-    .from(s.modelVariant)
-    .where(eq(s.modelVariant.id, baseId));
-  if (!base) {
-    ctx.unresolved = true;
-    ctx.details.push(`${r.identifier.value}: base ${r.base.value} resolves to a non-variant entity`);
+  const modelId = parents[0]!.modelId;
+
+  // Post-trained weights published by the model's own developer are first-party variants (instruct, reasoning, …),
+  // not community fine-tunes. Their kind cannot be read reliably from source metadata, so an editor confirms it.
+  const existingPublisher = await findOrganization(ctx.tx, r.publisher);
+  if (existingPublisher && existingPublisher === (await developerOfModel(ctx.tx, modelId))) {
+    raise(ctx, {
+      reason: 'first_party_variant_kind',
+      detail: `${r.identifier.value}: first-party ${r.derivation} of ${bases[0]!.value}; variant kind needs confirming${r.suggestedKind ? ` (suggested: ${r.suggestedKind})` : ''}`,
+      candidates: await findCandidates(ctx.tx, repoName(r.identifier), ['model_variant']),
+      suggestion,
+    });
     return;
   }
 
@@ -325,18 +630,18 @@ async function applyVariant(ctx: ApplyContext, r: VariantRecord): Promise<void> 
     slug: await uniqueSlug(ctx.tx, 'model_variant', slugify(r.name)),
     name: r.name,
     summary: r.summary ?? null,
-    modelId: base.modelId,
+    modelId,
     kind: r.derivation,
     publisherOrgId,
-    licenseId: (await licenseIdFor(ctx.tx, r.licenseKey)) ?? base.licenseId,
-    capabilities: (r.capabilities as Capability[] | undefined) ?? base.capabilities,
+    licenseId: await licenseIdFor(ctx, r.licenseKey),
+    capabilities: (r.capabilities as Capability[] | undefined) ?? parents[0]!.capabilities,
     releasedOn: r.releasedOn ?? null,
-    lineage: [{ predicate: LINEAGE[r.derivation], objectVariantId: baseId }],
+    lineage: parents.map((p) => ({ predicate: LINEAGE[r.derivation!], objectVariantId: p.id })),
     aliases: [r.identifier.value],
     sourceRecordId: ctx.sourceRecordId,
   });
   await linkExternalId(ctx.tx, { ...r.identifier, entityId: id, firstSeenRecordId: ctx.sourceRecordId });
-  for (const [field, value] of Object.entries({ name: r.name, derivation: r.derivation, base: r.base.value, license: r.licenseKey ?? null })) {
+  for (const [field, value] of Object.entries({ name: r.name, derivation: r.derivation, base: bases.map((b) => b.value).join(', '), license: r.licenseKey ?? null })) {
     await assertField(ctx, id, field, value, async () => false);
   }
   ctx.stats.entitiesCreated += 1;
@@ -346,8 +651,7 @@ async function applyVariant(ctx: ApplyContext, r: VariantRecord): Promise<void> 
 async function applyArtifactSet(ctx: ApplyContext, r: ArtifactSetRecord): Promise<void> {
   const variantId = await resolveIdentifier(ctx.tx, r.base);
   if (!variantId) {
-    ctx.unresolved = true;
-    ctx.details.push(`${r.identifier.value}: base ${r.base.value} is not a known variant`);
+    raise(ctx, { reason: 'unknown_base', subject: r.base.value, detail: `${r.identifier.value}: base ${r.base.value} is not a known variant`, candidates: await findCandidates(ctx.tx, repoName(r.base), ['model_variant']) });
     return;
   }
   const [variant] = await ctx.tx
@@ -355,8 +659,11 @@ async function applyArtifactSet(ctx: ApplyContext, r: ArtifactSetRecord): Promis
     .from(s.entity)
     .where(and(eq(s.entity.id, variantId), eq(s.entity.kind, 'model_variant')));
   if (!variant) {
-    ctx.unresolved = true;
-    ctx.details.push(`${r.identifier.value}: base is not a variant`);
+    raise(ctx, { reason: 'base_not_variant', subject: r.base.value, detail: `${r.identifier.value}: base is not a variant` });
+    return;
+  }
+  if (!r.files.length) {
+    raise(ctx, { reason: 'unknown_quantization', detail: `${r.identifier.value}: no recognised quantized weight files` });
     return;
   }
   const publisherOrgId = await resolveOrCreateOrganization(ctx, r.publisher);
@@ -365,8 +672,7 @@ async function applyArtifactSet(ctx: ApplyContext, r: ArtifactSetRecord): Promis
   for (const file of r.files) {
     const scheme = await resolveAlias(ctx.tx, file.schemeName, ['quantization_scheme']);
     if (!scheme) {
-      ctx.unresolved = true;
-      ctx.details.push(`${file.fileName}: unknown quantization scheme ${file.schemeName}`);
+      raise(ctx, { reason: 'unknown_quantization', subject: file.schemeName, detail: `${file.fileName}: unknown quantization scheme ${file.schemeName}`, suggestion: { sizeBytes: file.sizeBytes } });
       continue;
     }
     const artifactIdentifier: Identifier = { namespace: 'huggingface-artifact', value: `${r.identifier.value}:${file.schemeName}`, url: r.identifier.url };
@@ -395,8 +701,7 @@ async function applyArtifactSet(ctx: ApplyContext, r: ArtifactSetRecord): Promis
         );
       } catch (error) {
         if (!(error instanceof OntologyError)) throw error;
-        ctx.unresolved = true;
-        ctx.details.push(`${file.fileName}: ${error.message}`);
+        raise(ctx, { reason: 'ontology_rejected', subject: file.fileName, detail: `${file.fileName}: ${error.message}` });
         continue;
       }
       ctx.stats.entitiesCreated += 1;
@@ -415,8 +720,7 @@ async function applyArtifactSet(ctx: ApplyContext, r: ArtifactSetRecord): Promis
 async function applyProject(ctx: ApplyContext, r: ProjectRecord): Promise<void> {
   const projectId = await resolveIdentifier(ctx.tx, r.identifier);
   if (!projectId) {
-    ctx.unresolved = true;
-    ctx.details.push(`${r.identifier.value}: unknown project; requires categorisation before import`);
+    raise(ctx, { reason: 'unknown_project', detail: `${r.identifier.value}: unknown project; requires categorisation before import`, candidates: await findCandidates(ctx.tx, repoName(r.identifier), ['project']), suggestion: { ...r.fields } });
     return;
   }
   const updates: [string, unknown, () => Promise<boolean>][] = [];
@@ -435,19 +739,25 @@ async function applyProject(ctx: ApplyContext, r: ProjectRecord): Promise<void> 
   for (const [field, value, apply] of updates) await assertField(ctx, projectId, field, value, apply);
   ctx.touched.set(projectId, 'other');
 
-  if (r.release) {
-    const [project] = await ctx.tx.select({ name: s.entity.name }).from(s.entity).where(eq(s.entity.id, projectId));
+  const releases = new Map<string, ReleaseInfo>();
+  for (const release of [...(r.releases ?? []), ...(r.release ? [r.release] : [])]) if (!release.prerelease) releases.set(release.tag, release);
+  if (!releases.size) return;
+  const [project] = await ctx.tx.select({ name: s.entity.name }).from(s.entity).where(eq(s.entity.id, projectId));
+  for (const release of releases.values()) {
     await createEvent(ctx, {
-      dedupeKey: `${r.identifier.namespace}:${r.identifier.value}:release:${r.release.tag}`,
+      dedupeKey: releaseDedupeKey(r.identifier, release.tag),
       kind: 'runtime_release',
-      title: `${project!.name} ${r.release.title || r.release.tag}`,
-      summary: r.release.body?.split('\n')[0]?.slice(0, 280),
-      occurredAt: r.release.publishedAt,
-      url: r.release.url,
+      title: `${project!.name} ${release.title || release.tag}`,
+      summary: release.body?.split('\n').find((line) => line.trim())?.trim().slice(0, 280),
+      occurredAt: release.publishedAt,
+      url: release.url,
       entityIds: [projectId],
     });
   }
 }
+
+/** Shared by the GitHub API and GitHub release-feed adapters, so a release is one event whichever source saw it. */
+export const releaseDedupeKey = (repo: Identifier, tag: string) => `${repo.namespace}:${repo.value}:release:${tag}`;
 
 async function applyEvent(ctx: ApplyContext, r: EventRecord): Promise<void> {
   const entityIds: string[] = [];
@@ -461,7 +771,7 @@ async function applyEvent(ctx: ApplyContext, r: EventRecord): Promise<void> {
     else ctx.details.push(`mention "${mention}" not linked`);
   }
   await createEvent(ctx, {
-    dedupeKey: `${ctx.sourceKey}:${r.url ?? r.title}`,
+    dedupeKey: r.dedupeKey ?? `${ctx.sourceKey}:${r.url ?? r.title}`,
     kind: r.kind,
     title: r.title,
     summary: r.summary,
@@ -471,17 +781,44 @@ async function applyEvent(ctx: ApplyContext, r: EventRecord): Promise<void> {
   });
 }
 
+async function applyUnsupported(ctx: ApplyContext, r: UnsupportedRecord): Promise<void> {
+  const entityId = await resolveIdentifier(ctx.tx, r.identifier);
+  const [known] = entityId ? await ctx.tx.select({ id: s.entity.id, kind: s.entity.kind, slug: s.entity.slug, name: s.entity.name }).from(s.entity).where(eq(s.entity.id, entityId)) : [];
+  if (r.reason === 'source_unavailable' && !known) return; // never ingested: nothing to review
+  raise(ctx, {
+    reason: r.reason,
+    blocking: false,
+    detail: `${r.identifier.value}: ${r.detail}${known ? '; existing entity retained' : ''}`,
+    candidates: known ? [{ entityId: known.id, kind: known.kind, slug: known.slug, name: known.name, basis: 'external identifier' }] : [],
+  });
+}
+
 async function createEvent(ctx: ApplyContext, e: { dedupeKey: string; kind: EventRecord['kind']; title: string; summary?: string; occurredAt: string; url?: string; entityIds: string[] }) {
   const [row] = await ctx.tx
     .insert(s.event)
     .values({ eventKind: e.kind, title: e.title, summary: e.summary ?? null, occurredAt: new Date(e.occurredAt), url: e.url ?? null, dedupeKey: e.dedupeKey, sourceRecordId: ctx.sourceRecordId })
     .onConflictDoNothing()
     .returning({ id: s.event.id });
-  if (!row) return;
-  ctx.stats.eventsCreated += 1;
-  if (e.entityIds.length) {
-    await ctx.tx.insert(s.eventEntity).values(e.entityIds.map((entityId, i) => ({ eventId: row.id, entityId, role: i === 0 ? ('subject' as const) : ('related' as const) }))).onConflictDoNothing();
+  let eventId = row?.id;
+  if (row) ctx.stats.eventsCreated += 1;
+  else {
+    // Same event seen again (an edited feed entry, or another source): keep the first occurrence time, refresh text.
+    const [updated] = await ctx.tx
+      .update(s.event)
+      .set({ title: e.title, summary: e.summary ?? null, url: e.url ?? null })
+      .where(sql`${s.event.dedupeKey} = ${e.dedupeKey} and (${s.event.title} is distinct from ${e.title} or ${s.event.summary} is distinct from ${e.summary ?? null} or ${s.event.url} is distinct from ${e.url ?? null})`)
+      .returning({ id: s.event.id });
+    if (updated) ctx.stats.eventsUpdated += 1;
+    eventId = updated?.id ?? (await ctx.tx.select({ id: s.event.id }).from(s.event).where(eq(s.event.dedupeKey, e.dedupeKey)))[0]?.id;
+  }
+  if (eventId && e.entityIds.length) {
+    const [{ n } = { n: 0 }] = await ctx.tx.execute<{ n: number }>(sql`select count(*)::int as n from ecosystem.event_entity where event_id = ${eventId}`);
+    await ctx.tx
+      .insert(s.eventEntity)
+      .values(e.entityIds.map((entityId, i) => ({ eventId: eventId!, entityId, role: n === 0 && i === 0 ? ('subject' as const) : ('related' as const) })))
+      .onConflictDoNothing();
   }
 }
 
+export type { VariantKind };
 export { addAliases };

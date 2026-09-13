@@ -38,7 +38,7 @@ import {
   uuid,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
-import { sourceRecord } from './ingest';
+import { source, sourceRecord } from './ingest';
 import { userHardwareConfig } from './community-refs';
 
 export const ecosystem = pgSchema('ecosystem');
@@ -400,4 +400,24 @@ export const derivedContent = ecosystem.table(
     supersededAt: timestamp({ withTimezone: true }),
   },
   (t) => [index('derived_content_entity_idx').on(t.entityId)],
+);
+
+/**
+ * Volatile counters a source reports about an entity (Hugging Face downloads/likes, GitHub stars/forks).
+ * Kept out of source snapshots so they do not create a new snapshot on every fetch; one row per day.
+ */
+export const entityMetric = ecosystem.table(
+  'entity_metric',
+  {
+    entityId: uuid().notNull().references(() => entity.id, { onDelete: 'cascade' }),
+    metric: text().notNull(),
+    sourceId: uuid().notNull().references((): AnyPgColumn => source.id),
+    observedOn: date().notNull(),
+    value: doublePrecision().notNull(),
+    observedAt: timestamp({ withTimezone: true }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.entityId, t.metric, t.sourceId, t.observedOn] }),
+    index('entity_metric_latest_idx').on(t.entityId, t.metric, t.observedOn),
+  ],
 );

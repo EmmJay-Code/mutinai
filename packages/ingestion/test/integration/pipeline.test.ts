@@ -79,7 +79,9 @@ describe('fixture ingestion', () => {
     for (const adapter of all()) {
       const { stats } = await runAdapter({ db: h.db, store }, adapter);
       expect(stats.new).toBe(0);
-      expect(stats.unchanged).toBe(stats.seen);
+      // Unresolved snapshots are re-evaluated when seen again; nothing new may come of it.
+      expect(stats.unchanged + stats.rechecked).toBe(stats.seen);
+      expect(stats.entitiesCreated).toBe(0);
     }
     expect(await snapshot()).toEqual(before);
   });
@@ -88,7 +90,8 @@ describe('fixture ingestion', () => {
     const repos = (githubFixture as GitHubRepo[]).map((r) => (r.full_name === 'vllm-project/vllm' ? { ...r, description: 'Fast LLM serving (updated)' } : r));
     const before = await snapshot();
     const { stats } = await runAdapter({ db: h.db, store }, createFixtureGitHubAdapter({ repos }));
-    expect(stats).toMatchObject({ new: 1, unchanged: 3, fieldsUpdated: 1 });
+    expect(stats).toMatchObject({ new: 1, fieldsUpdated: 1, entitiesCreated: 0 });
+    expect(stats.unchanged + stats.rechecked).toBe(3); // the unknown-project snapshot is re-checked, not skipped
 
     const vllm = await catalog.getProjectDetail(h.db, 'vllm');
     expect(vllm!.summary).toBe('Fast LLM serving (updated)');

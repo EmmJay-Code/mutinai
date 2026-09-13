@@ -1,8 +1,33 @@
 export * from './adapter';
 export { canonicalJson, sha256 } from './hash';
 export { FileSystemObjectStore, MemoryObjectStore, type ObjectStore } from './object-store';
-export { processItem, runAdapter, type ItemOutcome, type PipelineDeps, type RunStats } from './pipeline';
-export { createFixtureHuggingFaceAdapter, normalizeHuggingFaceModel, FIXTURE_HUGGINGFACE_SOURCE, type HfModel } from './adapters/huggingface';
+export {
+  dryRunAdapter,
+  emptyStats,
+  IngestionBusyError,
+  processItem,
+  releaseDedupeKey,
+  REVIEW_REASONS,
+  runAdapter,
+  type ItemOutcome,
+  type PipelineDeps,
+  type ReviewReason,
+  type ReviewRequest,
+  type RunStats,
+} from './pipeline';
+export { DEFAULT_USER_AGENT, HttpClient, HttpError, nextLink, parseRateLimit, RateLimitError, type HttpClientOptions, type HttpResponse } from './http';
+export {
+  createFixtureHuggingFaceAdapter,
+  createHuggingFaceAdapter,
+  FIXTURE_HUGGINGFACE_SOURCE,
+  ggufSchemes,
+  HUGGINGFACE_SOURCE,
+  normalizeHuggingFaceModel,
+  projectHfModel,
+  suggestVariantKind,
+  type HfModel,
+  type HuggingFaceAdapterOptions,
+} from './adapters/huggingface';
 export { createFixtureGitHubAdapter, normalizeGitHubRepo, FIXTURE_GITHUB_SOURCE, type GitHubRepo } from './adapters/github';
 export { createFixtureRssAdapter, normalizeFeedItem, type FeedItem } from './adapters/rss';
 

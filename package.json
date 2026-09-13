@@ -26,7 +26,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "ingest": "npm run start -w @mutinai/worker -- ingest all",
-    "jobs": "npm run start -w @mutinai/worker -- work --once"
+    "jobs": "npm run start -w @mutinai/worker -- work --once",
+    "ingest:huggingface": "npm run start -w @mutinai/worker -- ingest huggingface",
+    "ingest:scheduled": "npm run start -w @mutinai/worker -- scheduled",
+    "review": "npm run start -w @mutinai/worker -- review"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",
