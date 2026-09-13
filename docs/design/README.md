@@ -110,9 +110,18 @@ not uniform — it is chosen.
 Density is chunked, not uniform: a reader squinting at a page should still see its regions.
 - Spacing scale `--s1`…`--s7` (4, 8, 12, 16, 24, 32, 56px): small within one object, medium between related objects,
   large (`.region`, 56px; 40px on phones) between conceptual sections.
-- **Discover** reads in one order: opening (headline, two actions, four plain numbers — no miniature charts) → top
-  story with model snapshot → Latest + Trending/community → Ecosystem trends (benchmark frontier and monthly releases,
-  given room) → What can I run? → Explore Mutinai (question links, gateways) → Learn.
+- **Discover** reads in one order, from why open models matter to where to go next: opening (headline, four plain
+  numbers, and five one-line reasons to run models yourself) → What's happening right now (a count per part of the
+  ecosystem, the top story with a model snapshot, Latest, Trending and release activity) → What the community is
+  talking about → Explore the ecosystem (question links, six area gateways) → Models worth knowing (family first:
+  family → builder → what it is known for → drill in) → How they compare (one concept per card, ranked on a single
+  test, plus the benchmark frontier) → Hardware watch (launches, memory tiers with sourced prices, What can I run?)
+  → Learn.
+- **Community signal is never dressed as a sourced fact.** The community region is a dashed, tinted panel carrying a
+  `Community` basis badge and member avatars — visibly unlike the solid panels that hold sourced data. Discussion and
+  sentiment are not collected yet, so that block is an explicit *Not collected yet* placeholder, never filler.
+- **Specialist terms carry their own plain-English explanation.** `Explain` renders the term with a small popover
+  from the shared glossary (`packages/domain/src/glossary.ts`), on hover and on keyboard focus, CSS only.
 - **Models Simple**: intent grid and a single "Good places to start" strip form one discovery layer; a large gap and
   a larger heading mark the start of All models; each result is a lightly contained object with identity and
   decision information separated by a rule. Technical mode starts the dense index immediately.

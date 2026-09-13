@@ -1,4 +1,4 @@
-import { summariseOrigin, type CompatResult, type SpeedAssessment } from '@mutinai/domain';
+import { GLOSSARY, summariseOrigin, type CompatResult, type GlossaryKey, type SpeedAssessment } from '@mutinai/domain';
 import Link from 'next/link';
 import { entityHref, formatDate, formatNumber, humanize } from '@/lib/format';
 import { EntityMark, entityTypeFor } from './viz';
@@ -203,6 +203,35 @@ export function Speed({ speed, unit = 'tok/s' }: { speed: SpeedAssessment; unit?
 
 export function Empty({ children }: { children: React.ReactNode }) {
   return <div className="empty">{children}</div>;
+}
+
+/**
+ * A specialist term with its plain-English explanation attached. The term stays on the page — experts keep their
+ * vocabulary — and the explanation opens on hover or keyboard focus. CSS only, so it works without JavaScript;
+ * the text is in the DOM, so screen readers and search read it too.
+ */
+export function Explain({ term, children }: { term: GlossaryKey; children?: React.ReactNode }) {
+  const entry = GLOSSARY[term];
+  return (
+    <span className="term" tabIndex={0}>
+      {children ?? entry.term}
+      <span className="term-pop" role="note">{entry.plain}</span>
+    </span>
+  );
+}
+
+/**
+ * A surface Mutinai has built but has no data for yet. Never filled with plausible-looking content: it says what
+ * will appear here and what has to exist first.
+ */
+export function Placeholder({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="placeholder">
+      <div className="placeholder-flag">Not collected yet</div>
+      <h4>{title}</h4>
+      <p>{children}</p>
+    </div>
+  );
 }
 
 export function Visibility({ visibility, status, verification }: { visibility?: string; status?: string; verification?: string }) {

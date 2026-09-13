@@ -40,6 +40,7 @@ Channel suffixes such as `-vscode` do not change the level.
 | Surface | Rule |
 |---|---|
 | **Top story** | The most significant live event (significance ≥ 2) from the last **14 days**. Ties go to model releases and hardware launches, then runtimes, then the newest. If nothing qualifies, Discover says *Nothing major in the last 14 days* and promotes nothing. |
+| **By part of the ecosystem (`digestByKind`)** | For each group (models, tools & runtimes, hardware, benchmarks, research & news): how many eligible events of significance ≥ 1 happened in the last **30 days**, plus the newest one whatever its date. A quiet corner then reads as *0 in 30 days · latest was in March* instead of disappearing. |
 | **Latest** | Strictly newest first by event time. Excludes the top story, significance 0 and future-dated entries (more than 24 h ahead). |
 | **Releases & launches (hero count)** | Live events of significance ≥ 2 whose event time is within the last **30 days**. |
 | **Releases per month (chart)** | Events of significance ≥ 2 per month by event time, for the 12 months ending with the current month. Months before live tracking began hold only the history sources still list; the caption says so. |

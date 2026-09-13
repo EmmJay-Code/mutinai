@@ -7,6 +7,8 @@ export * from './ratings';
 export * from './profile';
 export * from './discovery';
 export * from './freshness';
+export * from './families';
+export * from './glossary';
 export * from './model-naming';
 export * as compat from './compat';
 export type {

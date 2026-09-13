@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityByMonth, collapseDuplicates, eventSignificance, releaseLevel, releaseTitle, rankTrending, selectDiscover, type FreshnessEvent, type MetricObservation } from '../src/freshness';
+import { activityByMonth, collapseDuplicates, digestByKind, eventSignificance, releaseLevel, releaseTitle, rankTrending, selectDiscover, type FreshnessEvent, type MetricObservation } from '../src/freshness';
 
 const NOW = new Date('2026-09-13T12:00:00Z');
 const daysAgo = (n: number) => new Date(NOW.getTime() - n * 86_400_000).toISOString();
@@ -148,5 +148,48 @@ describe('trending', () => {
       NOW,
     );
     expect(items).toEqual([]);
+  });
+});
+
+describe('digest by kind', () => {
+  const groups = [
+    { key: 'models', kinds: ['model_release'] },
+    { key: 'runtimes', kinds: ['runtime_release'] },
+    { key: 'hardware', kinds: ['hardware_launch'] },
+    { key: 'research', kinds: ['research_paper', 'announcement'] },
+  ];
+
+  it('counts the last 30 days per group but keeps the newest item however old it is', () => {
+    const digest = digestByKind(
+      [
+        event({ kind: 'model_release', title: 'New model', occurredAt: daysAgo(3) }),
+        event({ kind: 'model_release', title: 'Older model', occurredAt: daysAgo(40) }),
+        event({ kind: 'hardware_launch', title: 'A card from spring', occurredAt: daysAgo(200) }),
+        release('vLLM', 'v0.29.1', daysAgo(2)),
+      ],
+      NOW,
+      groups,
+    );
+    expect(digest.map((d) => [d.key, d.recentCount, d.latest?.title ?? null])).toEqual([
+      ['models', 1, 'New model'],
+      // The only runtime release is a patch: noise, so it is neither counted nor shown.
+      ['runtimes', 0, null],
+      ['hardware', 0, 'A card from spring'],
+      ['research', 0, null],
+    ]);
+  });
+
+  it('applies the same eligibility rules as every other current surface', () => {
+    const digest = digestByKind(
+      [
+        event({ kind: 'model_release', title: 'Live release', occurredAt: daysAgo(1), sourceKind: 'huggingface' }),
+        event({ kind: 'model_release', title: 'Fixture release', occurredAt: daysAgo(1), sourceKind: 'fixture' }),
+        event({ kind: 'hardware_launch', title: 'Dated next month', occurredAt: daysAgo(-30) }),
+      ],
+      NOW,
+      groups,
+    );
+    expect(digest.find((d) => d.key === 'models')).toMatchObject({ recentCount: 1, latest: expect.objectContaining({ title: 'Live release' }) });
+    expect(digest.find((d) => d.key === 'hardware')).toMatchObject({ recentCount: 0, latest: null });
   });
 });
