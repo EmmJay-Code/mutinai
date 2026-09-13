@@ -34,7 +34,10 @@ Development sign-in (`MUTINAI_DEV_LOGIN=1`, never in production builds) lists th
 | `npm run db:generate` | Generate a migration from schema changes |
 | `npm run db:reset` | Drop and re-migrate the dev database |
 | `npm run db:bootstrap` | Idempotent deploy step: migrate, seed once, ingest fixtures, drain jobs |
-| `npm run worker -- ingest <adapter\|all>` | Run ingestion adapters |
+| `npm run ingest:huggingface -- --repos a/b --dry-run` | Live ingestion (also `worker -- ingest github\|feeds\|arxiv`) |
+| `npm run ingest:scheduled` | Cron entrypoint for `MUTINAI_LIVE_SOURCES` |
+| `npm run review -- list` | Review queue for incoming records that could not be placed |
+| `npm run worker -- ingest <source\|fixtures>` | Run ingestion adapters |
 | `npm run worker -- work` | Long-running job worker |
 | `npm run worker -- status` | Job and ingestion run summary |
 
@@ -58,6 +61,13 @@ Read [docs/architecture.md](docs/architecture.md) first, then the ADRs:
 5. [Ingestion boundary](docs/adr/0005-ingestion-boundary.md)
 6. [Compatibility engine](docs/adr/0006-compatibility-engine.md)
 7. [Public preview deployment](docs/adr/0007-preview-deployment.md)
+8. [Live source ingestion](docs/adr/0008-live-ingestion.md)
+
+## Live data
+
+Live adapters for the Hugging Face Hub, GitHub, official feeds and arXiv run through the same pipeline as the fixtures,
+with a review queue for anything that cannot be placed safely. See [docs/live-ingestion.md](docs/live-ingestion.md),
+[docs/sources.md](docs/sources.md), [docs/ai-enrichment.md](docs/ai-enrichment.md) and [docs/hardware-data.md](docs/hardware-data.md).
 
 ## Deployment
 
