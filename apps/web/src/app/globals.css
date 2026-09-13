@@ -427,8 +427,8 @@ details.alts summary { cursor: pointer; font-size: 13px; color: var(--muted); ma
   table.stack-sm thead { display: none; }
   table.stack-sm, table.stack-sm tbody, table.stack-sm tr { display: block; width: 100%; }
   table.stack-sm > tbody > tr { padding: var(--s4) 0; border-bottom: 1px solid var(--rule); }
-  table.stack-sm > tbody > tr > td { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: var(--s3); border: 0; padding: 4px 0; }
-  table.stack-sm > tbody > tr > td::before { content: attr(data-label); font-family: var(--font-mono); font-size: 11px; color: var(--muted); padding-top: 3px; }
-  table.stack-sm > tbody > tr > td[data-label='Model'] { display: block; margin-bottom: var(--s2); }
+  table.stack-sm > tbody > tr > td { display: block; position: relative; border: 0; padding: 4px 0 4px 84px; min-height: 26px; }
+  table.stack-sm > tbody > tr > td::before { content: attr(data-label); position: absolute; left: 0; top: 7px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+  table.stack-sm > tbody > tr > td[data-label='Model'] { padding-left: 0; margin-bottom: var(--s2); }
   table.stack-sm > tbody > tr > td[data-label='Model']::before { content: none; }
 }
