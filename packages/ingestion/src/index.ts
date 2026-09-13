@@ -40,6 +40,7 @@ export {
   type GitHubRepo,
 } from './adapters/github';
 export { createFixtureRssAdapter, normalizeFeedItem, type FeedItem } from './adapters/rss';
+export { ARXIV_MIN_INTERVAL_MS, ARXIV_SOURCE, arxivSearchQuery, createArxivAdapter, normalizeArxivEntry, parseArxivFeed, type ArxivQuery } from './adapters/arxiv';
 export { canonicalUrl, createFeedAdapter, excerpt, FEEDS_SOURCE, normalizeFeedEntry, parseFeed, type FeedConfig, type FeedEntrySnapshot } from './adapters/feed';
 
 import type { SourceAdapter } from './adapter';

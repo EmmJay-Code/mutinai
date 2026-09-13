@@ -1,0 +1,12 @@
+{
+  "$comment": "Curated arXiv queries. Deliberately narrow: technical reports of model families in the catalog, within AI/ML categories. Mention terms link papers to catalog entries only by exact alias. arXiv metadata is CC0; link to abstracts, never host PDFs.",
+  "queries": [
+    {
+      "key": "family-technical-reports",
+      "search": "ti:\"technical report\" AND (ti:Qwen OR ti:Gemma OR ti:Llama OR ti:Mistral OR ti:Mixtral OR ti:Phi OR ti:DeepSeek)",
+      "categories": ["cs.CL", "cs.LG", "cs.AI"],
+      "mentionTerms": ["Qwen", "Gemma", "Llama", "Mistral", "Mixtral", "Phi", "DeepSeek-R1"],
+      "maxResults": 50
+    }
+  ]
+}

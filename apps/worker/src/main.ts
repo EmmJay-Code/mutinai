@@ -12,7 +12,7 @@
  *   npm run worker -- status
  *   npm run worker -- bootstrap                  (deploy step: migrate, seed once, ingest fixtures, drain jobs)
  *
- * Sources: fixture-huggingface, fixture-github, fixture-rss (offline fixtures); huggingface, github, feeds (live).
+ * Sources: fixture-huggingface, fixture-github, fixture-rss (offline fixtures); huggingface, github, feeds, arxiv (live).
  * See docs/live-ingestion.md.
  */
 import { readFileSync } from 'node:fs';
@@ -22,6 +22,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { createDatabase, FIXTURE_SOURCE_KEY, jobs, linkExternalId, REPO_ROOT, requireEnv, runMigrations, schema, seedDatabase } from '@mutinai/db';
 import {
   ADAPTERS,
+  ARXIV_MIN_INTERVAL_MS,
+  createArxivAdapter,
   createFeedAdapter,
   createGitHubAdapter,
   createHuggingFaceAdapter,
@@ -33,6 +35,7 @@ import {
   IngestionBusyError,
   RateLimitError,
   REVIEW_REASONS,
+  type ArxivQuery,
   type FeedConfig,
   runAdapter,
   type SourceAdapter,
@@ -46,7 +49,7 @@ const databaseUrl = requireEnv('DATABASE_URL');
 const { db, close } = createDatabase(databaseUrl, { max: 4 });
 const store = new FileSystemObjectStore(resolve(REPO_ROOT, process.env.OBJECT_STORE_DIR ?? '.data/objects'));
 
-const LIVE_SOURCES = ['huggingface', 'github', 'feeds'] as const;
+const LIVE_SOURCES = ['huggingface', 'github', 'feeds', 'arxiv'] as const;
 type LiveSource = (typeof LIVE_SOURCES)[number];
 const hfWatchlist = JSON.parse(readFileSync(new URL('../sources/huggingface.json', import.meta.url), 'utf8')) as {
   authors: string[];
@@ -54,6 +57,8 @@ const hfWatchlist = JSON.parse(readFileSync(new URL('../sources/huggingface.json
 };
 
 const feedWatchlist = JSON.parse(readFileSync(new URL('../sources/feeds.json', import.meta.url), 'utf8')) as { feeds: FeedConfig[] };
+
+const arxivWatchlist = JSON.parse(readFileSync(new URL('../sources/arxiv.json', import.meta.url), 'utf8')) as { queries: ArxivQuery[] };
 
 const NO_FLAGS: IngestFlags = { dryRun: false, known: false, derivatives: false, recheckUnresolved: false };
 
@@ -93,7 +98,8 @@ async function buildAdapter(name: string, flags: IngestFlags): Promise<SourceAda
   }
   if (name === 'huggingface') {
     const token = process.env.HUGGINGFACE_TOKEN || process.env.HF_TOKEN || undefined;
-    const client = new HttpClient({ token, log, userAgent: process.env.MUTINAI_USER_AGENT || DEFAULT_USER_AGENT });
+    // The Hub's limits are fixed 5-minute windows: wait a window out rather than abort a scheduled run midway.
+    const client = new HttpClient({ token, log, userAgent: process.env.MUTINAI_USER_AGENT || DEFAULT_USER_AGENT, maxWaitMs: 330_000 });
     const repos = new Set(flags.repos ?? []);
     if (flags.known) for (const id of await knownVariantRepos()) repos.add(id);
     if (flags.recheckUnresolved) for (const id of await unresolvedExternalIds('huggingface')) repos.add(id);
@@ -125,6 +131,13 @@ async function buildAdapter(name: string, flags: IngestFlags): Promise<SourceAda
     const client = new HttpClient({ log, userAgent: process.env.MUTINAI_USER_AGENT || DEFAULT_USER_AGENT });
     log(`feeds: ${feeds.length} configured feed(s), conditional requests`);
     return createFeedAdapter({ client, feeds });
+  }
+  if (name === 'arxiv') {
+    if (selecting) throw new Error('arxiv runs the curated queries in apps/worker/sources/arxiv.json; selection flags do not apply');
+    // One request every 3 seconds on a single connection, per arXiv's API terms.
+    const client = new HttpClient({ log, userAgent: process.env.MUTINAI_USER_AGENT || DEFAULT_USER_AGENT, minIntervalMs: ARXIV_MIN_INTERVAL_MS, maxRetries: 2, maxWaitMs: 60_000 });
+    log(`arxiv: ${arxivWatchlist.queries.length} curated quer${arxivWatchlist.queries.length === 1 ? 'y' : 'ies'}`);
+    return createArxivAdapter({ client, queries: arxivWatchlist.queries });
   }
   throw new Error(`unknown source "${name}". Fixture: ${Object.keys(ADAPTERS).join(', ')}. Live: ${LIVE_SOURCES.join(', ')}`);
 }
@@ -172,6 +185,7 @@ async function scheduled() {
     huggingface: { authors: hfWatchlist.authors, derivatives: true, recheckUnresolved: true },
     github: { known: true },
     feeds: {},
+    arxiv: {},
   };
   let failures = 0;
   for (const source of enabled) {
