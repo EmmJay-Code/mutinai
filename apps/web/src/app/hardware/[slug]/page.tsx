@@ -2,6 +2,7 @@ import { catalog, community, compatQueries, getDb } from '@mutinai/db';
 import { compat } from '@mutinai/domain';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { IfContributing } from '@/components/preview';
 import { notFound } from 'next/navigation';
 import { PerformanceTable, ProvenanceBlock, RatingSummary, ReviewList, SubmissionList } from '@/components/results';
 import { Crumbs, Empty, EntitySection, Facts, FitBadge, Glance, SectionNav, Speed } from '@/components/ui';
@@ -68,7 +69,7 @@ export default async function DevicePage({ params }: { params: Params }) {
           />
           <div className="page-head-actions tight">
             {primarySystem && <Link className="btn btn-primary" href={`/run?system=${primarySystem.slug}`}>What can it run?</Link>}
-            <Link className="btn" href={`/contribute/review?entity=hardware_device:${device.slug}&returnTo=/hardware/${device.slug}`}>Review</Link>
+            <IfContributing><Link className="btn" href={`/contribute/review?entity=hardware_device:${device.slug}&returnTo=/hardware/${device.slug}`}>Review</Link></IfContributing>
           </div>
         </header>
         <aside className="verdict" aria-label="At a glance">

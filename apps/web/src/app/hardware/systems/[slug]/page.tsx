@@ -1,6 +1,7 @@
 import { catalog, community, compatQueries, getDb } from '@mutinai/db';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { IfContributing } from '@/components/preview';
 import { notFound } from 'next/navigation';
 import { PerformanceTable, RatingSummary, ReviewList, SubmissionList } from '@/components/results';
 import { Crumbs, Empty, EntitySection, FitBadge, Glance, SectionNav, Speed } from '@/components/ui';
@@ -60,8 +61,8 @@ export default async function SystemPage({ params }: { params: Params }) {
           />
           <div className="page-head-actions tight">
             <Link className="btn btn-primary" href={`/run?system=${system.slug}`}>Full compatibility</Link>
-            <Link className="btn" href={`/contribute/benchmark?system=${system.slug}`}>Submit a run</Link>
-            <Link className="btn" href={`/contribute/review?entity=hardware_configuration:${system.slug}&returnTo=/hardware/systems/${system.slug}`}>Review</Link>
+            <IfContributing><Link className="btn" href={`/contribute/benchmark?system=${system.slug}`}>Submit a run</Link>
+            <Link className="btn" href={`/contribute/review?entity=hardware_configuration:${system.slug}&returnTo=/hardware/systems/${system.slug}`}>Review</Link></IfContributing>
           </div>
         </header>
         <aside className="verdict" aria-label="At a glance">

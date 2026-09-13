@@ -2,10 +2,11 @@ import { catalog, community, compatQueries, getDb } from '@mutinai/db';
 import { COMPUTE_BACKENDS } from '@mutinai/domain';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { ContributionsClosed } from '@/components/preview';
 import { submitBenchmark } from '@/app/actions';
 import { Empty, PageHead } from '@/components/ui';
 import { searchParam } from '@/lib/format';
-import { getSession } from '@/lib/session';
+import { contributionsEnabled, getSession } from '@/lib/session';
 
 export const metadata: Metadata = { title: 'Submit a benchmark run' };
 
@@ -13,6 +14,7 @@ type SP = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function BenchmarkFormPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
+  if (!contributionsEnabled()) return <ContributionsClosed title="Submit a benchmark run" />;
   const session = await getSession();
   if (!session) {
     return (

@@ -1,4 +1,5 @@
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { requireEnv } from './env';
 import * as schema from './schema';
@@ -24,4 +25,9 @@ const globalForDb = globalThis as unknown as { __mutinaiDb?: DatabaseHandle };
 export function getDb(): Database {
   if (!globalForDb.__mutinaiDb) globalForDb.__mutinaiDb = createDatabase(requireEnv('DATABASE_URL'));
   return globalForDb.__mutinaiDb.db;
+}
+
+/** Cheap connectivity check for health endpoints. */
+export async function pingDatabase(db: Executor): Promise<void> {
+  await db.execute(sql`select 1`);
 }

@@ -1,14 +1,17 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { HashOpener, MobileMenu, NavLinks, RunLink } from '@/components/nav-links';
-import { getSession } from '@/lib/session';
+import { contributionsEnabled, getSession } from '@/lib/session';
+import { indexingAllowed, siteUrl } from '@/lib/site';
 import { signOut } from './actions';
 import './globals.css';
 
-export const metadata: Metadata = {
+export const generateMetadata = (): Metadata => ({
+  metadataBase: siteUrl(),
+  robots: indexingAllowed() ? undefined : { index: false, follow: false },
   title: { default: 'Mutinai — the open model ecosystem, in one place', template: '%s · Mutinai' },
   description: 'Open models, the hardware they run on, the tools around them, and the people building with them.',
-};
+});
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -38,15 +41,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                       <button className="btn-link" type="submit">Sign out</button>
                     </form>
                   </>
-                ) : (
+                ) : contributionsEnabled() ? (
                   <Link href="/signin">Sign in</Link>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
         </header>
         <div className="data-notice" role="note">
-          <div className="wrap">Foundation build · figures are illustrative fixture data, attributed to their source · data to May 2025</div>
+          <div className="wrap">Public preview · figures are illustrative fixture data, attributed to their source · data to May 2025 · read-only</div>
         </div>
         <main id="main">
           <div className="wrap">{children}</div>

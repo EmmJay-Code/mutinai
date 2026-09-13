@@ -33,6 +33,7 @@ Development sign-in (`MUTINAI_DEV_LOGIN=1`, never in production builds) lists th
 | `npm run build` | Production build of the web app |
 | `npm run db:generate` | Generate a migration from schema changes |
 | `npm run db:reset` | Drop and re-migrate the dev database |
+| `npm run db:bootstrap` | Idempotent deploy step: migrate, seed once, ingest fixtures, drain jobs |
 | `npm run worker -- ingest <adapter\|all>` | Run ingestion adapters |
 | `npm run worker -- work` | Long-running job worker |
 | `npm run worker -- status` | Job and ingestion run summary |
@@ -56,6 +57,11 @@ Read [docs/architecture.md](docs/architecture.md) first, then the ADRs:
 4. [Privacy architecture](docs/adr/0004-privacy-architecture.md)
 5. [Ingestion boundary](docs/adr/0005-ingestion-boundary.md)
 6. [Compatibility engine](docs/adr/0006-compatibility-engine.md)
+7. [Public preview deployment](docs/adr/0007-preview-deployment.md)
+
+## Deployment
+
+The public preview (read-only, `noindex`) deploys to Render from `render.yaml`. See [docs/deployment.md](docs/deployment.md).
 
 ## Seed data
 
@@ -65,7 +71,7 @@ source; the UI labels them as such. Community accounts and content are fictional
 
 ## Known limitations
 
-- Authentication is development-only; no production identity provider is integrated.
+- Authentication is development-only; no production identity provider is integrated, so production builds are read-only.
 - Compatibility estimates are coarse (±35%): no prompt-processing estimate, no per-runtime KV quantization,
   sliding-window attention (e.g. Gemma) overstates long-context KV memory.
 - Search is Postgres full-text + trigram; no synonyms or typo-tolerant ranking beyond trigram similarity.

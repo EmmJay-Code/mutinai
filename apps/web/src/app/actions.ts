@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { INFO_MODE_COOKIE } from '@/lib/info-mode';
-import { devLoginEnabled, getSession, getViewer, SESSION_COOKIE } from '@/lib/session';
+import { contributionsEnabled, devLoginEnabled, getSession, getViewer, SESSION_COOKIE } from '@/lib/session';
 
 const str = (fd: FormData, key: string) => {
   const v = fd.get(key);
@@ -45,12 +45,13 @@ export async function signIn(formData: FormData) {
 export async function signOut() {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
-  if (token) await identity.deleteSession(getDb(), token, requireEnv('SESSION_SECRET'));
+  if (token && devLoginEnabled()) await identity.deleteSession(getDb(), token, requireEnv('SESSION_SECRET'));
   jar.delete(SESSION_COOKIE);
   redirect('/');
 }
 
 async function requireSignedIn(returnTo: string) {
+  if (!contributionsEnabled()) redirect('/signin');
   const session = await getSession();
   if (!session) redirect(`/signin?returnTo=${encodeURIComponent(returnTo)}`);
   return session;
@@ -163,7 +164,7 @@ export async function vote(formData: FormData) {
 
 export async function verifySubmission(formData: FormData) {
   const viewer = await getViewer();
-  if (!isModerator(viewer)) redirect('/community?error=Moderators%20only');
+  if (!contributionsEnabled() || !isModerator(viewer)) redirect('/community?error=Moderators%20only');
   const state = str(formData, 'state') as 'verified' | 'disputed' | 'unverified';
   let target = '/community';
   try {

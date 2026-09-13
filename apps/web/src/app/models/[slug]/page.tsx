@@ -2,6 +2,7 @@ import { catalog, community, compatQueries, getDb } from '@mutinai/db';
 import { compat } from '@mutinai/domain';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { IfContributing } from '@/components/preview';
 import { notFound } from 'next/navigation';
 import { PerformanceTable, ProvenanceBlock, RatingSummary, ReviewList, SubmissionList } from '@/components/results';
 import { Basis, Crumbs, Disclosure, Empty, EntitySection, Facts, FitBadge, Glance, LicenseShort, SectionNav, Speed, Tag } from '@/components/ui';
@@ -113,8 +114,8 @@ export default async function ModelPage({ params }: { params: Params }) {
           />
           <div className="page-head-actions tight">
             <Link className="btn" href={`/models/compare?m=${model.slug}${model.siblings[0] ? `&m=${model.siblings[0].slug}` : ''}`}>Compare</Link>
-            <Link className="btn" href={`/contribute/benchmark?model=${model.slug}`}>Submit a run</Link>
-            {usable[0] && <Link className="btn" href={`/contribute/review?entity=model_variant:${usable[0].slug}&returnTo=${encodeURIComponent(`/models/${model.slug}#reviews`)}`}>Review</Link>}
+            <IfContributing><Link className="btn" href={`/contribute/benchmark?model=${model.slug}`}>Submit a run</Link>
+            {usable[0] && <Link className="btn" href={`/contribute/review?entity=model_variant:${usable[0].slug}&returnTo=${encodeURIComponent(`/models/${model.slug}#reviews`)}`}>Review</Link>}</IfContributing>
           </div>
         </header>
 
@@ -240,7 +241,7 @@ export default async function ModelPage({ params }: { params: Params }) {
                 </dl>
                 <div>
                   {aggregates[i] && aggregates[i]!.length > 0 ? <RatingSummary aggregates={aggregates[i]!} /> : <p className="small muted" style={{ margin: 0 }}>No ratings for this variant yet.</p>}
-                  <p style={{ marginTop: 8 }}><Link className="btn btn-small" href={`/contribute/review?entity=model_variant:${v.slug}&returnTo=${encodeURIComponent(`/models/${model.slug}#${v.slug}`)}`}>Review this variant</Link></p>
+                  <IfContributing><p style={{ marginTop: 8 }}><Link className="btn btn-small" href={`/contribute/review?entity=model_variant:${v.slug}&returnTo=${encodeURIComponent(`/models/${model.slug}#${v.slug}`)}`}>Review this variant</Link></p></IfContributing>
                 </div>
               </div>
               {v.artifacts.length ? (
@@ -291,7 +292,7 @@ export default async function ModelPage({ params }: { params: Params }) {
       </EntitySection>
 
       <div className="split">
-        <EntitySection id="community-runs" title="Community results" more={<Link href={`/contribute/benchmark?model=${model.slug}`}>Submit a run →</Link>}>
+        <EntitySection id="community-runs" title="Community results" more={<IfContributing><Link href={`/contribute/benchmark?model=${model.slug}`}>Submit a run →</Link></IfContributing>}>
           <SubmissionList submissions={submissions} />
         </EntitySection>
         <EntitySection id="reviews" title="Reviews">

@@ -2,16 +2,18 @@ import { catalog, getDb } from '@mutinai/db';
 import { dimensionsFor, isReviewableKind, REVIEWABLE_KINDS } from '@mutinai/domain';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { ContributionsClosed } from '@/components/preview';
 import { submitReview } from '@/app/actions';
 import { Empty, EntityLink, KindTag, PageHead } from '@/components/ui';
 import { entityHref, KIND_LABEL, searchParam } from '@/lib/format';
-import { getSession } from '@/lib/session';
+import { contributionsEnabled, getSession } from '@/lib/session';
 
 export const metadata: Metadata = { title: 'Write a review' };
 
 type SP = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function ReviewFormPage({ searchParams }: { searchParams: SP }) {
+  if (!contributionsEnabled()) return <ContributionsClosed title="Write a review" />;
   const sp = await searchParams;
   const db = getDb();
   const session = await getSession();

@@ -87,4 +87,5 @@ See [ADR-0002](./adr/0002-ontology.md) for the ontology and
    role for the public read path.
 9. **AI enrichment boundary.** Model/provider choice, cost limits, and review requirements before any
    `derived_content` is displayed — always labelled and never overwriting canonical fields.
-10. **Deployment target.** Managed Postgres, S3-compatible object store implementation, and a worker host.
+10. **Deployment target.** Managed Postgres, S3-compatible object store implementation, and a worker host. The read-only public preview
+    (Render web + Postgres, no worker) is recorded in [ADR-0007](./adr/0007-preview-deployment.md).

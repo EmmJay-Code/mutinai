@@ -20,6 +20,7 @@
     "db:migrate": "npm run migrate -w @mutinai/db",
     "db:seed": "npm run seed -w @mutinai/db",
     "db:reset": "npm run reset -w @mutinai/db",
+    "db:bootstrap": "npm run start -w @mutinai/worker -- bootstrap",
     "setup": "npm run db:up && npm run db:migrate && npm run db:seed",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",

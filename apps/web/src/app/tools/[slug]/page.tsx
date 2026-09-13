@@ -2,6 +2,7 @@ import { catalog, community, getDb } from '@mutinai/db';
 import { COMPUTE_BACKENDS, WEIGHT_FORMATS } from '@mutinai/domain';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { IfContributing } from '@/components/preview';
 import { notFound } from 'next/navigation';
 import { PerformanceTable, ProvenanceBlock, RatingSummary, ReviewList } from '@/components/results';
 import { Crumbs, Empty, EntityLink, EntitySection, Glance, LicenseShort, SectionNav } from '@/components/ui';
@@ -78,7 +79,7 @@ export default async function ToolPage({ params }: { params: Params }) {
           <div className="page-head-actions tight">
             {project.repoUrl && <a className="btn btn-primary" href={project.repoUrl} rel="noopener noreferrer">Repository</a>}
             {project.homepageUrl && <a className="btn" href={project.homepageUrl} rel="noopener noreferrer">Website</a>}
-            <Link className="btn" href={`/contribute/review?entity=project:${project.slug}&returnTo=/tools/${project.slug}`}>Review</Link>
+            <IfContributing><Link className="btn" href={`/contribute/review?entity=project:${project.slug}&returnTo=/tools/${project.slug}`}>Review</Link></IfContributing>
           </div>
         </header>
         <aside className="verdict" aria-label="At a glance">

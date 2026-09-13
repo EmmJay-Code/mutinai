@@ -1,7 +1,8 @@
 import { getDb, identity } from '@mutinai/db';
 import type { Metadata } from 'next';
 import { signIn } from '@/app/actions';
-import { Empty, PageHead } from '@/components/ui';
+import { ContributionsClosed } from '@/components/preview';
+import { PageHead } from '@/components/ui';
 import { searchParam } from '@/lib/format';
 import { devLoginEnabled } from '@/lib/session';
 
@@ -13,12 +14,7 @@ export default async function SignInPage({ searchParams }: { searchParams: SP })
   const sp = await searchParams;
   const returnTo = searchParam(sp, 'returnTo') ?? '/me';
   if (!devLoginEnabled()) {
-    return (
-      <>
-        <PageHead eyebrow="Account" title="Sign in" />
-        <Empty>No sign-in providers are configured for this environment.</Empty>
-      </>
-    );
+    return <ContributionsClosed title="Sign in" />;
   }
   const accounts = await identity.listDevAccounts(getDb());
   return (

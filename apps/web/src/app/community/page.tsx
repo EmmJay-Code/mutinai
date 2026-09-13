@@ -3,6 +3,7 @@ import { isModerator } from '@mutinai/domain';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { verifySubmission } from '@/app/actions';
+import { IfContributing } from '@/components/preview';
 import { ReviewList, SubmissionList } from '@/components/results';
 import { Disclosure, Section } from '@/components/ui';
 import { searchParam } from '@/lib/format';
@@ -35,10 +36,12 @@ export default async function CommunityPage({ searchParams }: { searchParams: SP
           <h1>What people are running, measuring and recommending.</h1>
           <p className="lede">Runs record exactly what was run and on what, so results can be reproduced. Reviews rate specific qualities, not a single score.</p>
         </div>
-        <div className="page-head-actions">
-          <Link className="btn btn-primary" href="/contribute/benchmark">Submit a run</Link>
-          <Link className="btn" href="/contribute/review">Write a review</Link>
-        </div>
+        <IfContributing>
+          <div className="page-head-actions">
+            <Link className="btn btn-primary" href="/contribute/benchmark">Submit a run</Link>
+            <Link className="btn" href="/contribute/review">Write a review</Link>
+          </div>
+        </IfContributing>
       </div>
       <div className="run-summary">
         <div><b>{stats.profiles}</b><span>members</span></div>

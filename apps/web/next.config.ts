@@ -20,6 +20,8 @@ const config: NextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Permissions-Policy', value: 'interest-cohort=(), browsing-topics=()' },
+          // Resolved at build time: keeps every response (pages and API) out of search indexes until MUTINAI_ALLOW_INDEXING=1.
+          ...(process.env.MUTINAI_ALLOW_INDEXING === '1' ? [] : [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }]),
         ],
       },
     ];

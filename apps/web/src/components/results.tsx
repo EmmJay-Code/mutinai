@@ -3,6 +3,7 @@ import type { RatingAggregate } from '@mutinai/domain';
 import { RATING_DIMENSIONS } from '@mutinai/domain';
 import Link from 'next/link';
 import { vote } from '@/app/actions';
+import { contributionsEnabled } from '@/lib/session';
 import { entityHref, formatContext, formatDate, formatGb, formatNumber, humanize } from '@/lib/format';
 import { Basis, Empty, Visibility } from './ui';
 import { Avatar } from './viz';
@@ -82,7 +83,7 @@ function VoteForm({ target, score, own }: { target: { reviewId: string } | { sub
     <form action={vote} className="vote">
       {'reviewId' in target ? <input type="hidden" name="reviewId" value={target.reviewId} /> : <input type="hidden" name="submissionId" value={target.submissionId} />}
       <span className="small muted">Helpful <span className="num">{score}</span></span>
-      {!own && <button className="btn btn-small" type="submit" name="value" value="1" aria-label="Mark helpful">+1</button>}
+      {!own && contributionsEnabled() && <button className="btn btn-small" type="submit" name="value" value="1" aria-label="Mark helpful">+1</button>}
     </form>
   );
 }

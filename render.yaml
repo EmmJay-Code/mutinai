@@ -1,0 +1,46 @@
+# Render Blueprint for the Mutinai public preview: one Node web service and one managed Postgres database.
+# The worker is not deployed; its idempotent `bootstrap` command runs as the pre-deploy step instead.
+# See docs/deployment.md and docs/adr/0007-preview-deployment.md.
+#
+# Region cannot be changed after creation: edit both `region` values before the first Blueprint sync if
+# another region (oregon, ohio, virginia, frankfurt, singapore) is closer to your audience.
+
+databases:
+  - name: mutinai-db
+    databaseName: mutinai
+    user: mutinai
+    plan: basic-256mb
+    region: virginia
+    postgresMajorVersion: "16"
+    # Reachable only from services in this Render workspace; no public database access.
+    ipAllowList: []
+
+services:
+  - type: web
+    name: mutinai-web
+    runtime: node
+    plan: starter
+    region: virginia
+    # Dev dependencies (tsx, TypeScript) are needed for the build and the pre-deploy bootstrap.
+    buildCommand: npm ci --include=dev && npm run build
+    # Migrate, seed the fixture dataset once, ingest fixtures, drain emitted jobs. Safe to repeat; a failure keeps
+    # the previous deploy live.
+    preDeployCommand: npm run db:bootstrap
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    domains:
+      - mutinai.com
+      - www.mutinai.com
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mutinai-db
+          property: connectionString
+      - key: MUTINAI_SITE_URL
+        value: https://mutinai.com
+      # Keep 0 while the site carries illustrative fixture data. Changing it requires a redeploy (build-time header).
+      - key: MUTINAI_ALLOW_INDEXING
+        value: "0"
