@@ -1,6 +1,7 @@
-# Render Blueprint for the Mutinai public preview: one Node web service and one managed Postgres database.
-# The worker is not deployed; its idempotent `bootstrap` command runs as the pre-deploy step instead.
-# See docs/deployment.md and docs/adr/0007-preview-deployment.md.
+# Render Blueprint for the Mutinai public preview: one Node web service, one managed Postgres database and one Cron Job
+# for scheduled live ingestion. There is no resident worker: its idempotent `bootstrap` command runs as the web
+# service's pre-deploy step, and `scheduled` runs as the cron job.
+# See docs/deployment.md, docs/live-ingestion.md, docs/adr/0007-preview-deployment.md and docs/adr/0008-live-ingestion.md.
 #
 # Region cannot be changed after creation: edit both `region` values before the first Blueprint sync if
 # another region (oregon, ohio, virginia, frankfurt, singapore) is closer to your audience.
@@ -45,30 +46,36 @@ services:
       - key: MUTINAI_ALLOW_INDEXING
         value: "0"
 
-  # Scheduled live ingestion (see docs/live-ingestion.md). Commented out: uncommenting and syncing the Blueprint creates
-  # a billed Cron Job (per-minute runtime, $1/month minimum) that writes live data into mutinai-db.
-  # - type: cron
-  #   name: mutinai-ingest
-  #   runtime: node
-  #   plan: starter
-  #   region: virginia
-  #   schedule: "15 */6 * * *"
-  #   buildCommand: npm ci --include=dev
-  #   startCommand: npm run ingest:scheduled
-  #   envVars:
-  #     - key: NODE_ENV
-  #       value: production
-  #     - key: DATABASE_URL
-  #       fromDatabase:
-  #         name: mutinai-db
-  #         property: connectionString
-  #     - key: MUTINAI_LIVE_SOURCES
-  #       value: huggingface,github,feeds,arxiv
-  #     - key: MUTINAI_INGEST_LIMIT
-  #       value: "300"
-  #     - key: OBJECT_STORE_DIR
-  #       value: /tmp/mutinai-objects
-  #     - key: GITHUB_TOKEN
-  #       sync: false
-  #     - key: HUGGINGFACE_TOKEN
-  #       sync: false
+  # Scheduled live ingestion (docs/live-ingestion.md). Writes live data into the preview database beside the fixtures;
+  # pages label which is which. Billed per minute of runtime ($1/month minimum); Render never overlaps runs.
+  # The web service carries no source credentials: tokens exist only here, set in the dashboard (sync: false).
+  - type: cron
+    name: mutinai-ingest
+    runtime: node
+    plan: starter
+    # Same region as mutinai-db, so DATABASE_URL stays on the private network.
+    region: virginia
+    schedule: "15 */6 * * *"
+    buildCommand: npm ci --include=dev
+    startCommand: npm run ingest:scheduled
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mutinai-db
+          property: connectionString
+      # arXiv is not scheduled: its API rate-limited us (429). It stays available manually (`worker -- ingest arxiv`).
+      - key: MUTINAI_LIVE_SOURCES
+        value: huggingface,github,feeds
+      - key: MUTINAI_INGEST_LIMIT
+        value: "300"
+      # Raw snapshots on ephemeral disk (ADR-0008).
+      - key: OBJECT_STORE_DIR
+        value: /tmp/mutinai-objects
+      # Strongly recommended: without it GitHub allows 60 requests/hour and runs ingest only what the quota covers.
+      - key: GITHUB_TOKEN
+        sync: false
+      # Optional: raises Hugging Face Hub limits.
+      - key: HUGGINGFACE_TOKEN
+        sync: false

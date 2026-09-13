@@ -5,11 +5,13 @@ not deployed: [ADR-0007](adr/0007-preview-deployment.md).
 
 | Runs publicly | Not deployed |
 |---|---|
-| `mutinai-web`: Next.js via `next start` (Starter, ~$7/mo) | Worker (its bootstrap runs once per deploy instead) |
+| `mutinai-web`: Next.js via `next start` (Starter, ~$7/mo) | Resident worker (its bootstrap runs once per deploy instead) |
 | `mutinai-db`: Postgres 16, private network only (Basic-256mb, ~$6/mo + storage) | Object store (snapshots go to ephemeral disk) |
+| `mutinai-ingest`: Cron Job, live ingestion every 6 h (Starter, $1/mo minimum; see [live-ingestion.md](live-ingestion.md)) | |
 
 The preview is **read-only**. Development sign-in never runs when `NODE_ENV=production`, so there is no sign-in, no
-session, and no community write, vote or moderation action. It sends `noindex` and needs no external APIs.
+session, and no community write, vote or moderation action. It sends `noindex` and needs no external APIs. Only the
+`mutinai-ingest` cron job calls upstream sources, and only it holds source tokens.
 
 ## One-time setup
 
@@ -83,6 +85,6 @@ npm run db:bootstrap && npm run build && PORT=3100 npm start
 ## Later
 
 - **Worker**: add a `type: worker` service running `npm run worker -- work`, with the same `DATABASE_URL`.
-- **Live sources**: need an S3-compatible `ObjectStore` first.
+- **Retained raw snapshots**: need an S3-compatible `ObjectStore` (ADR-0008).
 - **Indexing**: once real data is connected, set `MUTINAI_ALLOW_INDEXING=1`.
 - **Community writes**: need production identity and rate limiting first.

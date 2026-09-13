@@ -68,13 +68,18 @@ It then drains jobs and exits non-zero if any source failed. `MUTINAI_INGEST_LIM
 
 ### Render Cron Job
 
-1. **Choose the database.** Live data can go into the preview database (it will sit beside the fixtures, and pages
-   label which is which) or into a new database without fixtures. See "Decisions" below.
-2. **Add the cron service.** Uncomment the `cron` block in `render.yaml` (it keeps `DATABASE_URL` on the private
-   network), commit, then sync the Blueprint in the Render dashboard.
-3. **Set the tokens.** In the dashboard, set `GITHUB_TOKEN` and optionally `HUGGINGFACE_TOKEN` on the cron service.
-   They are `sync: false`, so Blueprint syncs never overwrite them.
-4. **Test it.** Trigger a run manually from the dashboard and read its logs, then leave the schedule to run.
+`render.yaml` defines the `mutinai-ingest` Cron Job: every 6 hours at minute 15, `MUTINAI_LIVE_SOURCES=huggingface,github,feeds`,
+`MUTINAI_INGEST_LIMIT=300`, writing into the preview database `mutinai-db` over the private network. Live data sits
+beside the fixtures, and pages label which is which. arXiv is not scheduled because its API rate-limited us (429). It
+stays available manually (`npm run worker -- ingest arxiv`); add it to `MUTINAI_LIVE_SOURCES` once a run succeeds.
+
+1. **Create the service.** In the Render dashboard, open the Blueprint and **Sync** it. This creates `mutinai-ingest`.
+2. **Set the tokens.** Open **mutinai-ingest → Environment** and set `GITHUB_TOKEN` (fine-grained, public repositories
+   read-only; strongly recommended) and optionally `HUGGINGFACE_TOKEN`. They are `sync: false`, so Blueprint syncs never
+   overwrite them. Never set them on `mutinai-web`. Without `GITHUB_TOKEN`, GitHub allows 60 requests/hour: runs ingest
+   only as many repositories as that covers and log a hint.
+3. **Test it.** Click **Trigger Run** on the service, read its logs, then leave the schedule to run. A run exits
+   non-zero, and Render marks it failed, if any source failed. The other sources still complete.
 
 Cost: a Cron Job is billed per minute of runtime on its plan (Starter $0.00016/min), with a $1/month minimum. A few
 minutes, four times a day, stays at the minimum.
