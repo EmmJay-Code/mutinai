@@ -28,8 +28,19 @@ export {
   type HfModel,
   type HuggingFaceAdapterOptions,
 } from './adapters/huggingface';
-export { createFixtureGitHubAdapter, normalizeGitHubRepo, FIXTURE_GITHUB_SOURCE, type GitHubRepo } from './adapters/github';
+export {
+  createFixtureGitHubAdapter,
+  createGitHubAdapter,
+  FIXTURE_GITHUB_SOURCE,
+  GITHUB_API_HEADERS,
+  GITHUB_SOURCE,
+  normalizeGitHubRepo,
+  projectGitHubRepo,
+  type GitHubAdapterOptions,
+  type GitHubRepo,
+} from './adapters/github';
 export { createFixtureRssAdapter, normalizeFeedItem, type FeedItem } from './adapters/rss';
+export { canonicalUrl, createFeedAdapter, excerpt, FEEDS_SOURCE, normalizeFeedEntry, parseFeed, type FeedConfig, type FeedEntrySnapshot } from './adapters/feed';
 
 import type { SourceAdapter } from './adapter';
 import { createFixtureGitHubAdapter } from './adapters/github';

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:github.com,2008:https://github.com/ollama/ollama/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/ollama/ollama/releases"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/ollama/ollama/releases.atom"/>
+  <title>Release notes from ollama</title>
+  <updated>2026-09-09T21:51:50Z</updated>
+  <entry>
+    <id>tag:github.com,2008:Repository/658928958/v0.34.0</id>
+    <updated>2026-09-10T06:18:35Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/ollama/ollama/releases/tag/v0.34.0"/>
+    <title>v0.34.0</title>
+    <content type="html">&lt;h2&gt;Use Ollama models in ChatGPT Desktop&lt;/h2&gt;
+&lt;p&gt;Ollama models can now be used directly in ChatGPT Desktop, so you can keep your existing workflow while running open models. Setup is available from the Ollama app on MacOS.&lt;/p&gt;
+&lt;a target=&quot;_blank&quot; rel=&quot;noopener noreferrer&quot; href=&quot;https://private-user-images.githubusercontent.com/29360864/649245808-e10e299d-c11f-447d-9234-afa855824efe.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODkyODA4NjgsIm5iZiI6MTc4OTI4MDU2OCwicGF0aCI6Ii8yOTM2MDg2NC82NDkyNDU4MDgtZTEwZTI5OWQtYzExZi00NDdkLTkyMzQtYWZhODU1ODI0ZWZlLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNjA5MTMlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjYwOTEzVDA2MjI0OFomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPWM0NzViOGE0MzY2ZjYxZDQ4ZWEzNWVkYWRlMzI1MTY4NDliYzczM2E5MmYwZWQxZDFkMWFjNDMyYWM1MDg5MmImWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0JnJlc3BvbnNlLWNvbnRlbnQtdHlwZT1pbWFnZSUyRnBuZyJ9.Htt8ZVpvd4_8sarAeduIe0Mio6dx7jA6Gmd1t2xTIRY&quot;&gt;&lt;img width=&quot;1374&quot; height=&quot;1300&quot; alt=&quot;CleanShot 2026-09-08 at 11 04 07 AM@2x&quot; src=&quot;https://private-user-images.githubusercontent.com/29360864/649245808-e10e299d-c11f-447d-9234-afa855824efe.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODkyODA4NjgsIm5iZiI6MTc4OTI4MDU2OCwicGF0aCI6Ii8yOTM2MDg2NC82NDkyNDU4MDgtZTEwZTI5OWQtYzExZi00NDdkLTkyMzQtYWZhODU1ODI0ZWZlLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNjA5MTMlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjYwOTEzVDA2MjI0OFomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPWM0NzViOGE0MzY2ZjYxZDQ4ZWEzNWVkYWRlMzI1MTY4NDliYzczM2E5MmYwZWQxZDFkMWFjNDMyYWM1MDg5MmImWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0JnJlc3BvbnNlLWNvbnRlbnQtdHlwZT1pbWFnZSUyRnBuZyJ9.Htt8ZVpvd4_8sarAeduIe0Mio6dx7jA6Gmd1t2xTIRY&quot; content-type-secured-asset=&quot;image/png&quot; style=&quot;max-width: 100%; height: auto; max-height: 1300px;&quot;&gt;&lt;/a&gt;
+&lt;p&gt;This release also improves structured output performance on Apple Silicon, adds support for OpenAI-compatible client tool search and response compaction.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;/strong&gt;: &lt;a class=&quot;commit-link&quot; href=&quot;https://github.com/ollama/ollama/compare/v0.33.3...v0.34.0&quot;&gt;&lt;tt&gt;v0.33.3...v0.34.0&lt;/tt&gt;&lt;/a&gt;&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+<entry>
+    <id>tag:github.com,2008:Repository/658928958/v0.34.0-rc5</id>
+    <updated>2026-09-09T21:51:50Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/ollama/ollama/releases/tag/v0.34.0-rc5"/>
+    <title>v0.34.0-rc5</title>
+    <content type="html">&lt;p&gt;openai: support standalone named function outputs (&lt;a class=&quot;issue-link js-issue-link&quot; data-error-text=&quot;Failed to load title&quot; data-id=&quot;5404430682&quot; data-permission-text=&quot;Title is private&quot; data-url=&quot;https://github.com/ollama/ollama/issues/18348&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/ollama/ollama/pull/18348/hovercard&quot; href=&quot;https://github.com/ollama/ollama/pull/18348&quot;&gt;#18348&lt;/a&gt;)&lt;/p&gt;</content>
+    <author>
+      <name>ParthSareen</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/29360864?s=60&amp;v=4"/>
+  </entry>
+<entry>
+    <id>tag:github.com,2008:Repository/658928958/v0.34.0-rc4</id>
+    <updated>2026-09-09T17:20:48Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/ollama/ollama/releases/tag/v0.34.0-rc4"/>
+    <title>v0.34.0-rc4</title>
+    <content type="html">&lt;p&gt;proxy: normalize namespaced commands in Full Access (&lt;a class=&quot;issue-link js-issue-link&quot; data-error-text=&quot;Failed to load title&quot; data-id=&quot;5393403495&quot; data-permission-text=&quot;Title is private&quot; data-url=&quot;https://github.com/ollama/ollama/issues/18331&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/ollama/ollama/pull/18331/hovercard&quot; href=&quot;https://github.com/ollama/ollama/pull/18331&quot;&gt;#18331&lt;/a&gt;)&lt;/p&gt;</content>
+    <author>
+      <name>ParthSareen</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/29360864?s=60&amp;v=4"/>
+  </entry>
+</feed>

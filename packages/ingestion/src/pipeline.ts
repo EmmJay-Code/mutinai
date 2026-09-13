@@ -103,6 +103,7 @@ export class IngestionBusyError extends Error {}
 
 interface ApplyContext {
   tx: Executor;
+  sourceId: string;
   sourceKey: string;
   sourceRecordId: string;
   priority: number;
@@ -248,6 +249,7 @@ export async function processItem(deps: PipelineDeps, adapter: SourceAdapter, so
 
     const ctx: ApplyContext = {
       tx,
+      sourceId,
       sourceKey: adapter.source.key,
       sourceRecordId: recordId,
       priority: adapter.source.priority,
@@ -802,11 +804,12 @@ async function createEvent(ctx: ApplyContext, e: { dedupeKey: string; kind: Even
   let eventId = row?.id;
   if (row) ctx.stats.eventsCreated += 1;
   else {
-    // Same event seen again (an edited feed entry, or another source): keep the first occurrence time, refresh text.
+    // Same event seen again. The source that created it owns its text (an edited entry refreshes it); other sources
+    // reporting the same identity (e.g. a release via both the GitHub API and its Atom feed) only add entity links.
     const [updated] = await ctx.tx
       .update(s.event)
       .set({ title: e.title, summary: e.summary ?? null, url: e.url ?? null })
-      .where(sql`${s.event.dedupeKey} = ${e.dedupeKey} and (${s.event.title} is distinct from ${e.title} or ${s.event.summary} is distinct from ${e.summary ?? null} or ${s.event.url} is distinct from ${e.url ?? null})`)
+      .where(sql`${s.event.dedupeKey} = ${e.dedupeKey} and ${s.event.sourceRecordId} in (select id from ingest.source_record where source_id = ${ctx.sourceId}) and (${s.event.title} is distinct from ${e.title} or ${s.event.summary} is distinct from ${e.summary ?? null} or ${s.event.url} is distinct from ${e.url ?? null})`)
       .returning({ id: s.event.id });
     if (updated) ctx.stats.eventsUpdated += 1;
     eventId = updated?.id ?? (await ctx.tx.select({ id: s.event.id }).from(s.event).where(eq(s.event.dedupeKey, e.dedupeKey)))[0]?.id;

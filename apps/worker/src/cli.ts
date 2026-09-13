@@ -12,6 +12,7 @@ export interface IngestFlags {
   known: boolean;
   derivatives: boolean;
   recheckUnresolved: boolean;
+  feeds?: string[];
 }
 
 export function parseCommand(argv: string[]) {
@@ -24,6 +25,7 @@ export function parseCommand(argv: string[]) {
       since: { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
       repos: { type: 'string' },
+      feeds: { type: 'string' },
       authors: { type: 'string' },
       known: { type: 'boolean', default: false },
       derivatives: { type: 'boolean', default: false },
@@ -50,6 +52,7 @@ export function parseCommand(argv: string[]) {
     known: values.known,
     derivatives: values.derivatives,
     recheckUnresolved: values['recheck-unresolved'],
+    feeds: list(values.feeds),
   };
   return { positionals, ingest, once: values.once, source: values.source, reason: values.reason, status: values.status, note: values.note };
 }

@@ -49,6 +49,7 @@ export interface HttpClientOptions {
 
 export interface RequestOptions {
   accept?: string;
+  headers?: Record<string, string>;
   /** Validators from a previous response; a 304 returns `notModified: true` with no body. */
   validators?: { etag?: string; lastModified?: string } | null;
   signal?: AbortSignal;
@@ -91,7 +92,7 @@ export class HttpClient {
   }
 
   async get(url: string, req: RequestOptions = {}): Promise<HttpResponse> {
-    const headers: Record<string, string> = { 'User-Agent': this.opts.userAgent, Accept: req.accept ?? 'application/json', ...this.opts.headers };
+    const headers: Record<string, string> = { 'User-Agent': this.opts.userAgent, Accept: req.accept ?? 'application/json', ...this.opts.headers, ...req.headers };
     if (this.opts.token) headers.Authorization = `Bearer ${this.opts.token}`;
     if (req.validators?.etag) headers['If-None-Match'] = req.validators.etag;
     if (req.validators?.lastModified) headers['If-Modified-Since'] = req.validators.lastModified;

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+ <channel>
+  <atom:link href="https://huggingface.co/blog/feed.xml" rel="self" type="application/rss+xml"/>
+  <title>Hugging Face - Blog</title>
+  <link>https://huggingface.co/blog</link>
+  <description>The Hugging Face blog</description>
+  <language>en-US</language>
+  <item>
+   <title>Rebuilding AUTOMATIC1111 with Gradio Workflow</title>
+   <pubDate>Thu, 10 Sep 2026 00:00:00 GMT</pubDate>
+   <link>https://huggingface.co/blog/gradio-workflow-1111</link>
+   <guid isPermaLink="true">https://huggingface.co/blog/gradio-workflow-1111</guid>
+  </item>
+<item>
+   <title>IBM releases SOTA Granite Time Series PatchTST-FM-r2 model with commercial-friendly license</title>
+   <pubDate>Wed, 09 Sep 2026 15:36:24 GMT</pubDate>
+   <link>https://huggingface.co/blog/ibm-research/ibm-releases-sota-granite-time-series</link>
+   <guid isPermaLink="false">https://huggingface.co/blog/ibm-research/ibm-releases-sota-granite-time-series</guid>
+  </item>
+<item>
+   <title>Safety for Whom? Refusing the Right Subset of a Topic, Not the Whole Topic</title>
+   <pubDate>Tue, 08 Sep 2026 14:23:07 GMT</pubDate>
+   <link>https://huggingface.co/blog/MultiverseComputingCAI/safety-for-whom</link>
+   <guid isPermaLink="false">https://huggingface.co/blog/MultiverseComputingCAI/safety-for-whom</guid>
+  </item>
+</channel>
+</rss>

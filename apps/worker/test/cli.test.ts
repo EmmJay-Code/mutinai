@@ -5,7 +5,7 @@ describe('worker command line', () => {
   it('parses ingest options', () => {
     const { positionals, ingest } = parseCommand(['ingest', 'huggingface', '--limit', '25', '--since', '7d', '--dry-run', '--repos', 'Qwen/Qwen3-8B, meta-llama/Llama-3.1-8B', '--derivatives']);
     expect(positionals).toEqual(['ingest', 'huggingface']);
-    expect(ingest).toEqual({ limit: 25, since: '7d', dryRun: true, repos: ['Qwen/Qwen3-8B', 'meta-llama/Llama-3.1-8B'], authors: undefined, known: false, derivatives: true, recheckUnresolved: false });
+    expect(ingest).toEqual({ limit: 25, since: '7d', dryRun: true, repos: ['Qwen/Qwen3-8B', 'meta-llama/Llama-3.1-8B'], authors: undefined, known: false, derivatives: true, recheckUnresolved: false, feeds: undefined });
   });
 
   it('rejects invalid limits and unknown flags', () => {

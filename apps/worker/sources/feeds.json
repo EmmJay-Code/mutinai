@@ -1,0 +1,10 @@
+{
+  "$comment": "Curated official feeds, each verified to respond with a valid RSS/Atom document (September 2026). Entries become events linked to the listed identifiers; only titles, dates, links and short excerpts are stored. Add feeds deliberately: every entry appears in What's New.",
+  "feeds": [
+    { "key": "huggingface-blog", "name": "Hugging Face blog", "url": "https://huggingface.co/blog/feed.xml", "kind": "announcement", "maxItems": 20 },
+    { "key": "qwen-blog", "name": "Qwen blog", "url": "https://qwenlm.github.io/blog/index.xml", "kind": "announcement", "identifiers": [{ "namespace": "huggingface-org", "value": "Qwen" }] },
+    { "key": "mistral-news", "name": "Mistral AI news", "url": "https://mistral.ai/news/rss", "kind": "announcement", "identifiers": [{ "namespace": "huggingface-org", "value": "mistralai" }] },
+    { "key": "ollama-releases", "name": "Ollama releases", "url": "https://github.com/ollama/ollama/releases.atom", "kind": "runtime_release", "githubReleasesOf": "ollama/ollama" },
+    { "key": "vllm-releases", "name": "vLLM releases", "url": "https://github.com/vllm-project/vllm/releases.atom", "kind": "runtime_release", "githubReleasesOf": "vllm-project/vllm" }
+  ]
+}

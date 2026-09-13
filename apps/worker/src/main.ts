@@ -2,7 +2,7 @@
  * Mutinai worker: ingestion runs, background jobs and the editorial review queue. Scales independently of the web tier.
  *
  *   npm run worker -- ingest <source|fixtures> [--limit N] [--since 7d|36h|ISO|last-run] [--dry-run]
- *                    [--repos org/a,org/b] [--authors org,…] [--known] [--derivatives] [--recheck-unresolved]
+ *                    [--repos org/a,org/b] [--authors org,…] [--known] [--derivatives] [--recheck-unresolved] [--feeds key,…]
  *   npm run worker -- scheduled                  (cron entrypoint: enabled live sources since last run, then jobs)
  *   npm run worker -- work [--once]
  *   npm run worker -- review list [--source key] [--reason code] [--status open|all] [--limit N]
@@ -12,7 +12,7 @@
  *   npm run worker -- status
  *   npm run worker -- bootstrap                  (deploy step: migrate, seed once, ingest fixtures, drain jobs)
  *
- * Sources: fixture-huggingface, fixture-github, fixture-rss (offline fixtures); huggingface (live).
+ * Sources: fixture-huggingface, fixture-github, fixture-rss (offline fixtures); huggingface, github, feeds (live).
  * See docs/live-ingestion.md.
  */
 import { readFileSync } from 'node:fs';
@@ -22,14 +22,18 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { createDatabase, FIXTURE_SOURCE_KEY, jobs, linkExternalId, REPO_ROOT, requireEnv, runMigrations, schema, seedDatabase } from '@mutinai/db';
 import {
   ADAPTERS,
+  createFeedAdapter,
+  createGitHubAdapter,
   createHuggingFaceAdapter,
   DEFAULT_USER_AGENT,
   dryRunAdapter,
   FileSystemObjectStore,
+  GITHUB_API_HEADERS,
   HttpClient,
   IngestionBusyError,
   RateLimitError,
   REVIEW_REASONS,
+  type FeedConfig,
   runAdapter,
   type SourceAdapter,
 } from '@mutinai/ingestion';
@@ -42,11 +46,14 @@ const databaseUrl = requireEnv('DATABASE_URL');
 const { db, close } = createDatabase(databaseUrl, { max: 4 });
 const store = new FileSystemObjectStore(resolve(REPO_ROOT, process.env.OBJECT_STORE_DIR ?? '.data/objects'));
 
-const LIVE_SOURCES = ['huggingface'] as const;
+const LIVE_SOURCES = ['huggingface', 'github', 'feeds'] as const;
+type LiveSource = (typeof LIVE_SOURCES)[number];
 const hfWatchlist = JSON.parse(readFileSync(new URL('../sources/huggingface.json', import.meta.url), 'utf8')) as {
   authors: string[];
   derivatives: { relations: string[]; perVariant: number };
 };
+
+const feedWatchlist = JSON.parse(readFileSync(new URL('../sources/feeds.json', import.meta.url), 'utf8')) as { feeds: FeedConfig[] };
 
 const NO_FLAGS: IngestFlags = { dryRun: false, known: false, derivatives: false, recheckUnresolved: false };
 
@@ -56,6 +63,13 @@ async function knownVariantRepos(): Promise<string[]> {
   const rows = await db.execute<{ value: string }>(sql`
     select x.value from ingest.external_identifier x join ecosystem.entity e on e.id = x.entity_id
     where x.namespace = 'huggingface' and e.kind = 'model_variant' order by x.value`);
+  return rows.map((r) => r.value);
+}
+
+async function knownProjectRepos(): Promise<string[]> {
+  const rows = await db.execute<{ value: string }>(sql`
+    select x.value from ingest.external_identifier x join ecosystem.entity e on e.id = x.entity_id
+    where x.namespace = 'github' and e.kind = 'project' order by x.value`);
   return rows.map((r) => r.value);
 }
 
@@ -71,7 +85,7 @@ async function unresolvedExternalIds(sourceKey: string): Promise<string[]> {
 }
 
 async function buildAdapter(name: string, flags: IngestFlags): Promise<SourceAdapter> {
-  const selecting = Boolean(flags.repos || flags.authors || flags.known || flags.derivatives || flags.recheckUnresolved);
+  const selecting = Boolean(flags.repos || flags.authors || flags.known || flags.derivatives || flags.recheckUnresolved || flags.feeds);
   const fixture = ADAPTERS[name];
   if (fixture) {
     if (selecting) throw new Error(`${name} is a fixture source; selection flags apply to live sources only`);
@@ -91,6 +105,26 @@ async function buildAdapter(name: string, flags: IngestFlags): Promise<SourceAda
       authors: flags.authors ?? (selecting ? [] : hfWatchlist.authors),
       derivatives: flags.derivatives || !selecting ? { bases: await knownVariantRepos(), relations: hfWatchlist.derivatives.relations, perBase: hfWatchlist.derivatives.perVariant } : undefined,
     });
+  }
+  if (name === 'github') {
+    if (flags.authors || flags.derivatives) throw new Error('--authors and --derivatives apply to huggingface only');
+    const token = process.env.GITHUB_TOKEN || undefined;
+    const client = new HttpClient({ token, log, userAgent: process.env.MUTINAI_USER_AGENT || DEFAULT_USER_AGENT, headers: GITHUB_API_HEADERS });
+    const repos = new Set((flags.repos ?? []).map((r) => r.toLowerCase()));
+    // Known projects are the default selection: GitHub is never crawled for discovery.
+    if (flags.known || !flags.repos) for (const id of await knownProjectRepos()) repos.add(id);
+    if (flags.recheckUnresolved) for (const id of await unresolvedExternalIds('github')) repos.add(id);
+    log(`github: ${token ? 'authenticated (5,000 requests/hour)' : 'anonymous (60 requests/hour)'}; ${repos.size} repositories`);
+    return createGitHubAdapter({ client, repos: [...repos] });
+  }
+  if (name === 'feeds') {
+    if (flags.repos || flags.authors || flags.derivatives || flags.known) throw new Error('feeds accepts --feeds key,… to select feeds');
+    const unknown = (flags.feeds ?? []).filter((k) => !feedWatchlist.feeds.some((f) => f.key === k));
+    if (unknown.length) throw new Error(`unknown feeds: ${unknown.join(', ')} (configured: ${feedWatchlist.feeds.map((f) => f.key).join(', ')})`);
+    const feeds = flags.feeds ? feedWatchlist.feeds.filter((f) => flags.feeds!.includes(f.key)) : feedWatchlist.feeds;
+    const client = new HttpClient({ log, userAgent: process.env.MUTINAI_USER_AGENT || DEFAULT_USER_AGENT });
+    log(`feeds: ${feeds.length} configured feed(s), conditional requests`);
+    return createFeedAdapter({ client, feeds });
   }
   throw new Error(`unknown source "${name}". Fixture: ${Object.keys(ADAPTERS).join(', ')}. Live: ${LIVE_SOURCES.join(', ')}`);
 }
@@ -134,10 +168,15 @@ async function scheduled() {
   const unknown = enabled.filter((s) => !(LIVE_SOURCES as readonly string[]).includes(s));
   if (unknown.length) throw new Error(`MUTINAI_LIVE_SOURCES contains unknown sources: ${unknown.join(', ')} (live sources: ${LIVE_SOURCES.join(', ')})`);
   const limit = Number(process.env.MUTINAI_INGEST_LIMIT || 300);
+  const defaults: Record<LiveSource, Partial<IngestFlags>> = {
+    huggingface: { authors: hfWatchlist.authors, derivatives: true, recheckUnresolved: true },
+    github: { known: true },
+    feeds: {},
+  };
   let failures = 0;
   for (const source of enabled) {
     try {
-      await ingest(source, { ...NO_FLAGS, since: 'last-run', limit, authors: hfWatchlist.authors, derivatives: true, recheckUnresolved: true });
+      await ingest(source, { ...NO_FLAGS, since: 'last-run', limit, ...defaults[source as LiveSource] });
     } catch (error) {
       if (error instanceof IngestionBusyError) log(`${source}: skipped (${error.message})`);
       else {
