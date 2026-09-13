@@ -385,21 +385,70 @@ export const entityRelation = ecosystem.table(
   ],
 );
 
-/** AI-generated or computed content. Never canonical: always carries generator + inputs. */
+export const derivedReviewStatus = ecosystem.enum('derived_review_status', ['unreviewed', 'approved', 'rejected']);
+
+/**
+ * AI-generated or computed content about an entity or an event. Never canonical: it is stored apart from the facts it
+ * describes, records exactly what produced it (task, prompt version, provider, model, input hash, source records),
+ * and is shown only once approved and labelled. See docs/ai-enrichment.md.
+ */
 export const derivedContent = ecosystem.table(
   'derived_content',
   {
     id: uuid().primaryKey().defaultRandom(),
-    entityId: uuid().notNull().references(() => entity.id, { onDelete: 'cascade' }),
+    entityId: uuid().references(() => entity.id, { onDelete: 'cascade' }),
+    eventId: uuid().references(() => event.id, { onDelete: 'cascade' }),
     contentKind: text().notNull(),
     body: text().notNull(),
+    /** Enrichment task id (e.g. `entity.plain_summary`). */
     generator: text().notNull(),
+    /** Task prompt version. */
     generatorVersion: text().notNull(),
+    provider: text().notNull().default(''),
+    model: text().notNull().default(''),
+    /** Hash of task, prompt version, provider and the exact input facts; unchanged inputs are not regenerated. */
+    inputHash: text().notNull().default(''),
     inputSourceRecordIds: uuid().array().notNull().default(sql`'{}'`),
+    reviewStatus: derivedReviewStatus().notNull().default('unreviewed'),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     supersededAt: timestamp({ withTimezone: true }),
   },
-  (t) => [index('derived_content_entity_idx').on(t.entityId)],
+  (t) => [
+    index('derived_content_entity_idx').on(t.entityId),
+    index('derived_content_event_idx').on(t.eventId),
+    check('derived_content_one_subject', sql`num_nonnulls(${t.entityId}, ${t.eventId}) = 1`),
+  ],
+);
+
+export const priceKind = ecosystem.enum('price_kind', ['launch_msrp', 'retail_new', 'used', 'editorial_estimate']);
+
+/**
+ * A dated, sourced price for a hardware device or configuration. Market prices (new/used) are observations at a time
+ * and place, never timeless facts; the legacy launch/approx price columns remain until the UI reads from here.
+ */
+export const priceObservation = ecosystem.table(
+  'price_observation',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    entityId: uuid().notNull().references(() => entity.id, { onDelete: 'cascade' }),
+    priceKind: priceKind().notNull(),
+    amount: doublePrecision().notNull(),
+    /** ISO 4217 code. */
+    currency: text().notNull(),
+    /** ISO 3166-1 alpha-2 market, or null when not market-specific (e.g. a launch MSRP). */
+    region: text(),
+    observedAt: timestamp({ withTimezone: true }).notNull(),
+    sourceName: text().notNull(),
+    sourceUrl: text(),
+    sourceRecordId: uuid().references(() => sourceRecord.id),
+    note: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('price_observation_latest_idx').on(t.entityId, t.priceKind, t.observedAt),
+    check('price_observation_amount_positive', sql`${t.amount} > 0`),
+    check('price_observation_currency_code', sql`${t.currency} ~ '^[A-Z]{3}$'`),
+  ],
 );
 
 /**

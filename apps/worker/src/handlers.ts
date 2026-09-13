@@ -1,4 +1,6 @@
-import { refreshSearchText, type Database } from '@mutinai/db';
+import { refreshSearchText, runEnrichment, type Database } from '@mutinai/db';
+import { ENRICHMENT_TASKS } from '@mutinai/domain';
+import { enrichmentProviderFromEnv } from './enrichment';
 
 export type JobHandler = (db: Database, payload: Record<string, unknown>, log: (msg: string) => void) => Promise<void>;
 
@@ -13,8 +15,16 @@ export const handlers: Record<string, JobHandler> = {
   'compat.invalidate': async (_db, payload, log) => {
     log(`compat.invalidate ${String(payload.entityId ?? payload.artifactId)}: no precomputed compatibility cache yet`);
   },
-  // Extension point for AI enrichment. Output must go to ecosystem.derived_content, never canonical columns.
-  'enrich.entity': async (_db, payload, log) => {
-    log(`enrich.entity ${String(payload.entityId)}: AI enrichment not configured`);
+  // AI enrichment writes ecosystem.derived_content only (never canonical columns). Disabled unless a provider is configured.
+  'enrich.entity': async (db, payload, log) => {
+    const provider = enrichmentProviderFromEnv();
+    if (!provider) {
+      log(`enrich.entity ${String(payload.entityId)}: AI enrichment not configured`);
+      return;
+    }
+    for (const task of ENRICHMENT_TASKS) {
+      const outcome = await runEnrichment(db, provider, task, { kind: 'entity', id: String(payload.entityId) });
+      if (outcome.status !== 'not_applicable') log(`enrich.entity ${String(payload.entityId)} ${task.id}: ${outcome.status}`);
+    }
   },
 };

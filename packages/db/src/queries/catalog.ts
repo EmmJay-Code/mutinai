@@ -768,3 +768,24 @@ export async function eventActivityByMonth(db: Executor, months = 12): Promise<M
   }
   return out;
 }
+
+// ─── Prices ──────────────────────────────────────────────────────────────────
+
+export interface PriceObservationDTO {
+  priceKind: string;
+  amount: number;
+  currency: string;
+  region: string | null;
+  observedAt: Date;
+  sourceName: string;
+  sourceUrl: string | null;
+}
+
+/** Latest observation per price kind, currency and region for a hardware entity. */
+export async function listLatestPrices(db: Executor, entityId: string): Promise<PriceObservationDTO[]> {
+  return rows<PriceObservationDTO>(db, sql`
+    select distinct on (price_kind, currency, coalesce(region, ''))
+      price_kind::text as "priceKind", amount, currency, region, observed_at as "observedAt", source_name as "sourceName", source_url as "sourceUrl"
+    from ecosystem.price_observation where entity_id = ${entityId}
+    order by price_kind, currency, coalesce(region, ''), observed_at desc`);
+}

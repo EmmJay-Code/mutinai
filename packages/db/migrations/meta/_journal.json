@@ -29,6 +29,13 @@
       "when": 1789279703278,
       "tag": "0003_live_ingestion",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789281344100,
+      "tag": "0004_enrichment_prices_papers",
+      "breakpoints": true
     }
   ]
 }

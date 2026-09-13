@@ -88,6 +88,7 @@ export const EVENT_KINDS = [
   'hardware_launch',
   'benchmark_update',
   'announcement',
+  'research_paper',
 ] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 

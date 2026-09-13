@@ -1,5 +1,7 @@
 export * from './ontology';
 export * from './data-origin';
+export * from './pricing';
+export * from './enrichment';
 export * from './privacy';
 export * from './ratings';
 export * from './profile';

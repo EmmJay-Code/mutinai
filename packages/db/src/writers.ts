@@ -4,8 +4,10 @@
  */
 import {
   validateArtifact,
+  validatePriceObservation,
   validateRelation,
   validateVariant,
+  type PriceObservationKind,
   type Capability,
   type EntityKind,
   type RelationPredicate,
@@ -176,5 +178,41 @@ export async function ensureSource(
     .values({ key: input.key, name: input.name, kind: input.kind, baseUrl: input.baseUrl ?? null, priority: input.priority })
     .onConflictDoUpdate({ target: s.source.key, set: { name: input.name, baseUrl: input.baseUrl ?? null, priority: input.priority } })
     .returning({ id: s.source.id });
+  return row!.id;
+}
+
+export interface PriceObservationInput {
+  entityId: string;
+  priceKind: PriceObservationKind;
+  amount: number;
+  currency: string;
+  region?: string | null;
+  observedAt: Date;
+  sourceName: string;
+  sourceUrl?: string | null;
+  sourceRecordId?: string | null;
+  note?: string | null;
+}
+
+/** Records a dated, sourced hardware price. Validation rejects unsourced market prices and non-hardware subjects. */
+export async function recordPriceObservation(db: Executor, input: PriceObservationInput): Promise<string> {
+  const entityKind = await entityKindOf(db, input.entityId);
+  const check = validatePriceObservation({ ...input, entityKind });
+  if (!check.ok) throw new OntologyError(check.errors);
+  const [row] = await db
+    .insert(s.priceObservation)
+    .values({
+      entityId: input.entityId,
+      priceKind: input.priceKind,
+      amount: input.amount,
+      currency: input.currency,
+      region: input.region ?? null,
+      observedAt: input.observedAt,
+      sourceName: input.sourceName,
+      sourceUrl: input.sourceUrl ?? null,
+      sourceRecordId: input.sourceRecordId ?? null,
+      note: input.note ?? null,
+    })
+    .returning({ id: s.priceObservation.id });
   return row!.id;
 }
