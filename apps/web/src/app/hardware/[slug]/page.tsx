@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { IfContributing } from '@/components/preview';
 import { notFound } from 'next/navigation';
 import { PerformanceTable, ProvenanceBlock, RatingSummary, ReviewList, SubmissionList } from '@/components/results';
-import { Crumbs, Empty, EntitySection, Facts, FitBadge, Glance, SectionNav, Speed } from '@/components/ui';
+import { Crumbs, Empty, EntitySection, Explain, Facts, FitBadge, Glance, SectionNav, Speed } from '@/components/ui';
 import { EntityMark, LinearBar, MemoryScale, ParamsReach } from '@/components/viz';
 import { formatDate, formatGb, formatParams, humanize } from '@/lib/format';
 import { hideSampleCommunityContent, measurementPolicy, SAMPLE_EMPTY_TEXT } from '@/lib/community-visibility';
@@ -81,6 +81,10 @@ export default async function DevicePage({ params }: { params: Params }) {
         <aside className="verdict" aria-label="At a glance">
           <div>
             <h2>Capacity <span>{primarySystem ? primarySystem.name.replace(/\s*\(.*\)$/, '') : ''}</span></h2>
+            <p className="small muted" style={{ margin: '4px 0 0' }}>
+              {device.memoryKind === 'unified' ? <><Explain term="unified-memory" align="end" /> decides what fits;</> : <><Explain term="vram" align="end" /> decides what fits;</>}{' '}
+              <Explain term="memory-bandwidth" align="end">memory speed</Explain> decides how fast it answers.
+            </p>
             <div style={{ display: 'grid', gap: 10, marginTop: 8 }}>
               {usable && <ParamsReach maxB={maxParamsAtQ4(usable)} label="Holds at 4-bit" />}
               {usable && <MemoryScale gb={usable} label="Usable memory" />}

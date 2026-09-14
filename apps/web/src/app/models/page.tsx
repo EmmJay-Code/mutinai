@@ -7,7 +7,7 @@ import { InfoModeToggle } from '@/components/info-mode';
 import { Empty, LicenseShort } from '@/components/ui';
 import { CapabilityBars, Heat, MemoryScale, SystemsMeter } from '@/components/viz';
 import { CAPABILITY_LABEL, formatContext, formatMonthYear, formatParams, humanize, numberParam, searchParam } from '@/lib/format';
-import { measurementPolicy } from '@/lib/community-visibility';
+import { hideSampleCommunityContent, measurementPolicy } from '@/lib/community-visibility';
 import { getInfoMode } from '@/lib/info-mode';
 
 export const metadata: Metadata = { title: 'Models' };
@@ -37,7 +37,7 @@ export default async function ModelsPage({ searchParams }: { searchParams: SP })
     sort: explicitSort ?? 'released',
   };
   const db = getDb();
-  const [models, all, facets, profiles, summary, mode] = await Promise.all([
+  const [rawModels, rawAll, facets, profiles, summary, mode] = await Promise.all([
     catalog.listModels(db, filters),
     catalog.listModels(db),
     catalog.listModelFacets(db),
@@ -45,6 +45,13 @@ export default async function ModelsPage({ searchParams }: { searchParams: SP })
     compatQueries.compatSummaryByModel(db, { contextLength: 8192, ...measurementPolicy() }),
     getInfoMode(),
   ]);
+  // Counts of member runs and reviews are claims about a real model, so where the only contributions are seeded they
+  // are zeroed here rather than filtered at each use: "Popular", the activity column and the community line all read
+  // from these two fields. See lib/community-visibility.
+  const hideCommunity = hideSampleCommunityContent();
+  const scrub = (list: Model[]) => (hideCommunity ? list.map((m) => ({ ...m, runCount: 0, reviewCount: 0 })) : list);
+  const models = scrub(rawModels);
+  const all = scrub(rawAll);
   const ctx = (m: Model) => ({ profile: profiles[m.slug], reach: summary[m.slug] });
   let shown = intent ? models.filter(intent.test) : models;
   if (intent && !explicitSort) shown = [...shown].sort((a, b) => intent.score(b, ctx(b)) - intent.score(a, ctx(a)));
@@ -195,7 +202,7 @@ export default async function ModelsPage({ searchParams }: { searchParams: SP })
           <select id="sort" name="sort" defaultValue={current.sort ?? (intent ? 'recommended' : 'released')}>
             {intent && <option value="recommended">Best match</option>}
             <option value="released">Newest</option>
-            <option value="activity">Community activity</option>
+            {!hideCommunity && <option value="activity">Community activity</option>}
             <option value="params_desc">Largest</option>
             <option value="params_asc">Smallest</option>
             <option value="name">Name</option>

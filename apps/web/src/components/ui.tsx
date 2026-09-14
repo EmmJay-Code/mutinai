@@ -210,10 +210,10 @@ export function Empty({ children }: { children: React.ReactNode }) {
  * vocabulary — and the explanation opens on hover or keyboard focus. CSS only, so it works without JavaScript;
  * the text is in the DOM, so screen readers and search read it too.
  */
-export function Explain({ term, children }: { term: GlossaryKey; children?: React.ReactNode }) {
+export function Explain({ term, children, align }: { term: GlossaryKey; children?: React.ReactNode; align?: 'end' }) {
   const entry = GLOSSARY[term];
   return (
-    <span className="term" tabIndex={0}>
+    <span className={align === 'end' ? 'term term-end' : 'term'} tabIndex={0}>
       {children ?? entry.term}
       <span className="term-pop" role="note">{entry.plain}</span>
     </span>

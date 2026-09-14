@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { IfContributing } from '@/components/preview';
 import { notFound } from 'next/navigation';
 import { PerformanceTable, RatingSummary, ReviewList, SubmissionList } from '@/components/results';
-import { Crumbs, Empty, EntitySection, FitBadge, Glance, SectionNav, Speed } from '@/components/ui';
+import { Crumbs, Empty, EntitySection, Explain, FitBadge, Glance, SectionNav, Speed } from '@/components/ui';
 import { EntityMark, MemoryScale, ParamsReach, SystemsMeter } from '@/components/viz';
 import { formatGb, formatParams, humanize } from '@/lib/format';
 import { hideSampleCommunityContent, measurementPolicy, SAMPLE_EMPTY_TEXT } from '@/lib/community-visibility';
@@ -89,7 +89,7 @@ export default async function SystemPage({ params }: { params: Params }) {
 
       <SectionNav items={SECTIONS} />
 
-      <EntitySection id="runs" title="What it runs" intro="Largest models without offloading, 8K context." more={<Link href={`/run?system=${system.slug}`}>Everything →</Link>}>
+      <EntitySection id="runs" title="What it runs" intro={<>Largest models that fit without spilling into system memory, at an 8K <Explain term="context" />.</>} more={<Link href={`/run?system=${system.slug}`}>Everything →</Link>}>
         {top.length === 0 ? <Empty>No compatible models found.</Empty> : (
           <ul className="pick-list" style={{ columns: 2, columnGap: 28 }}>
             {top.slice(0, 10).map((p) => (

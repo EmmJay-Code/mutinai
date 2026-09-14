@@ -51,6 +51,18 @@ export const GLOSSARY = {
     term: 'tokens per second',
     plain: 'How fast the model writes its answer; about 10 tokens per second reads like comfortable typing.',
   },
+  'weight-format': {
+    term: 'format',
+    plain: 'How a model’s files are packaged. Each program can only load certain ones, so the format decides what runs it.',
+  },
+  'memory-bandwidth': {
+    term: 'memory speed',
+    plain: 'How fast the chip can read its own memory, in GB/s. It sets how quickly a model can write its answer.',
+  },
+  'kv-cache': {
+    term: 'working memory',
+    plain: 'Extra space the model needs while it answers. It grows with the length of the conversation, on top of the file itself.',
+  },
   benchmark: {
     term: 'benchmark',
     plain: 'A fixed set of questions every model is given, so their scores can be compared on the same task.',
