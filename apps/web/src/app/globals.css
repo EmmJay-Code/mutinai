@@ -313,6 +313,39 @@ main { padding: 16px 0 64px; }
 .tier-device { display: inline-flex; align-items: baseline; gap: 6px; }
 .tier-device em { font: 11.5px var(--mono); font-style: normal; color: var(--muted); }
 
+/* ─── Learn: figures drawn from the catalog's own rows ───── */
+.learn-figure { margin: var(--s4) 0 var(--s5); padding: var(--s4); background: var(--raised); border-radius: var(--radius); display: grid; gap: var(--s3); }
+.learn-figure figcaption { font-size: 13px; line-height: 1.5; color: var(--muted); margin: 0; max-width: 68ch; }
+.learn-figure .fig-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.learn-figure .fig-head h3 { font: 600 15px/1.3 var(--sans); }
+
+.licence-bar { display: flex; height: 12px; gap: 2px; border-radius: 3px; overflow: hidden; }
+.licence-bar .seg { display: block; min-width: 4px; }
+.seg-permissive { background: var(--ok); }
+.seg-restricted { background: var(--warn); }
+.seg-noncommercial { background: var(--danger); }
+.seg-unknown { background: var(--none); }
+.licence-key { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--s2) var(--s4); }
+.licence-key li { display: grid; grid-template-columns: 9px auto minmax(0, 1fr); gap: 8px; align-items: baseline; font-size: 13px; }
+.licence-key .dot { width: 9px; height: 9px; border-radius: 2px; }
+.licence-key b { font: 600 14px var(--mono); color: var(--ink); }
+.licence-key .sub { display: block; font-size: 12px; color: var(--muted); }
+
+.size-bars { display: grid; gap: 10px; }
+
+.ladder { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+.ladder li { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 2px 12px; padding-left: var(--s3); border-left: 2px solid var(--line-strong); }
+.ladder li:hover { border-left-color: var(--accent); }
+.rung-level { grid-row: span 2; font: 600 10px/1.8 var(--sans); letter-spacing: 0.07em; text-transform: uppercase; color: var(--faint); }
+.rung-name { font: 600 15px/1.3 var(--serif); }
+.rung-what { font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+@media (max-width: 560px) { .ladder li { grid-template-columns: minmax(0, 1fr); margin-left: 0 !important; } .rung-level { grid-row: auto; line-height: 1.4; } }
+
+.runtime-grid { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; font-size: 13px; }
+.runtime-grid .rg-head, .runtime-grid .rg-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px minmax(0, 1.5fr) 130px; gap: 12px; padding: 7px 12px; background: var(--bg); align-items: baseline; }
+.runtime-grid .rg-head { font: 600 10.5px/1.2 var(--sans); letter-spacing: 0.07em; text-transform: uppercase; color: var(--faint); }
+@media (max-width: 700px) { .runtime-grid .rg-head { display: none; } .runtime-grid .rg-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2px 12px; } }
+
 /* ─── Plain-English explanations of specialist terms ─────── */
 .term { position: relative; border-bottom: 1px dotted var(--line-strong); cursor: help; }
 .term:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
