@@ -37,6 +37,7 @@ Development sign-in (`MUTINAI_DEV_LOGIN=1`, never in production builds) lists th
 | `npm run ingest:huggingface -- --repos a/b --dry-run` | Live ingestion (also `worker -- ingest github\|feeds\|arxiv`) |
 | `npm run ingest:scheduled` | Cron entrypoint for `MUTINAI_LIVE_SOURCES` |
 | `npm run review -- list` | Review queue for incoming records that could not be placed |
+| `npm run worker -- ingest hardware-specs --file <csv>` | Import researched hardware specs, each field citing the page it was read from ([format](docs/hardware-data.md#importing-researched-specifications)) |
 | `npm run worker -- ingest <source\|fixtures>` | Run ingestion adapters |
 | `npm run worker -- work` | Long-running job worker |
 | `npm run worker -- status` | Job and ingestion run summary |

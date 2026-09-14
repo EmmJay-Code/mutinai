@@ -4,7 +4,7 @@
  * Adapters only fetch and normalize. They never touch the database; the pipeline owns
  * deduplication, identity resolution, writes, provenance, review items and downstream work.
  */
-import type { Architecture, EventKind, VariantKind } from '@mutinai/domain';
+import type { Architecture, ComputeBackend, DeviceKind, EventKind, MemoryKind, VariantKind } from '@mutinai/domain';
 
 export type SourceKind = 'huggingface' | 'github' | 'arxiv' | 'rss' | 'editorial' | 'fixture';
 
@@ -136,6 +136,29 @@ export interface EventRecord {
   releaseTag?: string;
 }
 
+/** Hardware specifications a page states. Each one is asserted separately, so its provenance is the page it came from. */
+export type HardwareSpecField = 'memoryGb' | 'memoryType' | 'memoryBandwidthGbps' | 'tdpWatts' | 'releasedOn' | 'launchPriceUsd';
+
+/**
+ * A hardware device as a manufacturer's own page states it.
+ *
+ * One record is one device as described by one page, because provenance lives on the source record: specs read from
+ * a spec page and a price read from a launch announcement are two records, and each field then cites where it was
+ * actually read. Only stated facts appear in `facts` — an absent field is never written, never inferred.
+ *
+ * `classification` is the editor's judgement (what kind of device it is, how its memory works, which backends run on
+ * it), so it is required to create a device and ignored when one already exists. Without it an unknown device is
+ * raised for review rather than invented.
+ */
+export interface HardwareDeviceRecord {
+  type: 'hardware_device';
+  identifier: Identifier;
+  name: string;
+  vendor: OrganizationRef;
+  classification?: { deviceKind: DeviceKind; memoryKind: MemoryKind; backends: ComputeBackend[] };
+  facts: { field: HardwareSpecField; value: string | number }[];
+}
+
 /**
  * Something the source publishes that Mutinai deliberately does not model (a LoRA adapter, a deleted repo, …).
  * Recorded for review; never creates or deletes entities.
@@ -147,7 +170,7 @@ export interface UnsupportedRecord {
   detail: string;
 }
 
-export type NormalizedRecord = VariantRecord | ArtifactSetRecord | ProjectRecord | EventRecord | UnsupportedRecord;
+export type NormalizedRecord = VariantRecord | ArtifactSetRecord | ProjectRecord | EventRecord | HardwareDeviceRecord | UnsupportedRecord;
 
 export interface SourceAdapter {
   source: SourceDescriptor;

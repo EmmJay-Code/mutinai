@@ -801,6 +801,29 @@ export async function liveSourceStatus(db: Executor): Promise<{ firstCheckedAt: 
   return { firstCheckedAt: row?.firstCheckedAt ?? null, lastCheckedAt: row?.lastCheckedAt ?? null };
 }
 
+export interface FieldCitationDTO {
+  field: string;
+  /** The page the value was read from, when the source record has one. */
+  url: string | null;
+  sourceName: string;
+  sourceKind: string;
+  assertedAt: Date;
+}
+
+/**
+ * For each canonical field of an entity, the source record whose value it currently holds. Editorial imports record
+ * the manufacturer page a spec was read from, so a reader can check any figure against the page that states it.
+ */
+export async function listFieldCitations(db: Executor, entityId: string): Promise<Record<string, FieldCitationDTO>> {
+  const rows_ = await rows<FieldCitationDTO>(db, sql`
+    select fa.field, sr.url, src.name as "sourceName", src.kind::text as "sourceKind", fa.asserted_at as "assertedAt"
+    from ingest.field_assertion fa
+    join ingest.source_record sr on sr.id = fa.source_record_id
+    join ingest.source src on src.id = sr.source_id
+    where fa.entity_id = ${entityId} and fa.applied = 1`);
+  return Object.fromEntries(rows_.map((r) => [r.field, r]));
+}
+
 // ─── Prices ──────────────────────────────────────────────────────────────────
 
 export interface PriceObservationDTO {

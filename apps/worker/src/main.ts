@@ -26,6 +26,7 @@ import {
   createArxivAdapter,
   createFeedAdapter,
   createGitHubAdapter,
+  createHardwareSpecsAdapter,
   createHuggingFaceAdapter,
   DEFAULT_USER_AGENT,
   dryRunAdapter,
@@ -97,6 +98,12 @@ async function buildAdapter(name: string, flags: IngestFlags): Promise<SourceAda
     if (selecting) throw new Error(`${name} is a fixture source; selection flags apply to live sources only`);
     return fixture();
   }
+  if (name === 'hardware-specs') {
+    if (selecting) throw new Error('hardware-specs reads a CSV; selection flags apply to network sources only');
+    if (!flags.file) throw new Error('hardware-specs needs --file <path.csv>. Columns and rules: docs/hardware-data.md');
+    log(`hardware-specs: importing ${flags.file}`);
+    return createHardwareSpecsAdapter({ file: flags.file, onIssue: (issue) => log(`  refused row ${issue.row} (${issue.name}): ${issue.problem}`) });
+  }
   if (name === 'huggingface') {
     const token = process.env.HUGGINGFACE_TOKEN || process.env.HF_TOKEN || undefined;
     // The Hub's limits are fixed 5-minute windows: wait a window out rather than abort a scheduled run midway.
@@ -140,7 +147,7 @@ async function buildAdapter(name: string, flags: IngestFlags): Promise<SourceAda
     log(`arxiv: ${arxivWatchlist.queries.length} curated quer${arxivWatchlist.queries.length === 1 ? 'y' : 'ies'}`);
     return createArxivAdapter({ client, queries: arxivWatchlist.queries });
   }
-  throw new Error(`unknown source "${name}". Fixture: ${Object.keys(ADAPTERS).join(', ')}. Live: ${LIVE_SOURCES.join(', ')}`);
+  throw new Error(`unknown source "${name}". Fixture: ${Object.keys(ADAPTERS).join(', ')}. Live: ${LIVE_SOURCES.join(', ')}. Editorial: hardware-specs (--file)`);
 }
 
 async function resolveSince(sourceKey: string, value: string | undefined): Promise<Date | undefined> {
