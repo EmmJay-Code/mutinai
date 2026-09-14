@@ -1,7 +1,20 @@
+import { catalog, getDb } from '@mutinai/db';
+import { licenseOpenness, OPENNESS_TEXT, type LicenseOpenness } from '@mutinai/domain';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Explain } from '@/components/ui';
+import { LinearBar } from '@/components/viz';
+import { formatBytes, formatDate, formatParams, humanize, VARIANT_KIND_EXPLAINER } from '@/lib/format';
+import { BACKEND_LABEL } from '@/lib/hardware';
 
 export const metadata: Metadata = { title: 'Learn' };
+
+/**
+ * The guides teach with the catalog's own rows rather than with drawn examples: the licence split is counted from the
+ * models actually tracked, the download sizes are the real files, and the naming ladder walks a model that exists.
+ * Every example is chosen by the data, never named in code, so a guide can neither go stale nor point at something
+ * that was removed — and a reader who doubts a figure can click straight through to the record behind it.
+ */
 
 const PATHS = [
   {
@@ -24,7 +37,6 @@ const PATHS = [
     lede: 'Three things decide what you can run: memory, quantization and the runtime.',
     body: [
       'Memory is the hard limit. The whole model has to fit in your GPU’s memory (or your Mac’s unified memory) along with a working cache that grows with the length of the conversation. If it doesn’t fit, some runtimes can spill into system RAM — it works, but slowly.',
-      'Quantization shrinks models by storing each weight with fewer bits. A 4-bit version (such as Q4_K_M) needs roughly a third of the memory of the original with a small quality cost, which is why it’s the usual download.',
       'Speed is mostly about how fast memory can be read. That’s why a GPU with fast memory generates text quicker than a CPU with lots of slower RAM — and why mixture-of-experts models, which read only part of their weights per token, feel fast for their size.',
       'Runtimes load the model and serve it: llama.cpp and Ollama run almost anywhere, MLX is built for Apple silicon, and vLLM is designed for serving many users on NVIDIA or AMD GPUs.',
     ],
@@ -39,7 +51,7 @@ const PATHS = [
     title: 'Understand models',
     lede: 'The names look chaotic, but they encode a simple structure.',
     body: [
-      'A family (Qwen, Llama, Gemma) is a lineage from one developer. A release (Qwen2.5) is a dated generation within it. A model is one trained size — Qwen2.5 32B. A variant is a specific set of weights built from that model: the base, an instruct version for chat, a coder, or a distill made by someone else. Finally, a quantization is a downloadable file of a variant at a particular precision.',
+      'Read a name from the outside in and it comes apart into five levels. Anyone can add to the lower ones: a quantization, a fine-tune or a distill is often published by someone other than the lab that trained the model, which is exactly what open weights make possible.',
       'Benchmarks give a rough sense of capability, but developers report them with different prompts and settings. Use them to shortlist, then look at community results and reviews from people doing what you want to do.',
       'Mutinai labels every number with where it came from: developer-reported, measured by the community, or estimated.',
     ],
@@ -65,14 +77,28 @@ const PATHS = [
   },
 ];
 
-export default function LearnPage() {
+export default async function LearnPage() {
+  const db = getDb();
+  const [models, runtimes] = await Promise.all([catalog.listModels(db), catalog.listProjects(db, { category: 'runtime' })]);
+  // The worked example is whichever model has the most downloads on file: the one whose ladder and size range are
+  // fullest. Picked from data, so nothing here names a model that might later be removed.
+  const richest = [...models].sort((a, b) => b.artifactCount - a.artifactCount || b.variantCount - a.variantCount)[0];
+  const example = richest ? await catalog.getModelDetail(db, richest.slug) : null;
+
+  const figures: Record<string, React.ReactNode> = {
+    'start-here': <LicenceFigure models={models} />,
+    'run-locally': example ? <SizeFigure model={example} /> : null,
+    'understand-models': example ? <LadderFigure model={example} /> : null,
+    build: <RuntimeFigure runtimes={runtimes} />,
+  };
+
   return (
     <>
       <div className="page-head">
         <div>
           <div className="eyebrow">Learn</div>
           <h1>Open models, explained as you go.</h1>
-          <p className="lede">Four short paths — just enough to make sense of what you’re looking at, then straight to the real data.</p>
+          <p className="lede">Four short paths — just enough to make sense of what you’re looking at, then straight to the real data. Every figure below is counted from the catalog, so you can click any of it to see where it came from.</p>
         </div>
       </div>
       <ol className="paths" aria-label="Guides">
@@ -87,6 +113,7 @@ export default function LearnPage() {
               <div className="step">Path 0{i + 1}</div>
               <h2 id={`${p.id}-h`} style={{ font: '600 26px/1.15 var(--serif)', letterSpacing: '-0.02em' }}>{p.title}</h2>
               <p className="lede" style={{ margin: '4px 0 12px' }}>{p.lede}</p>
+              {figures[p.id]}
               {p.body.map((para, j) => <p key={j}>{para}</p>)}
             </div>
             <aside>
@@ -101,5 +128,127 @@ export default function LearnPage() {
         </section>
       ))}
     </>
+  );
+}
+
+/** Downloadable weights are the entry price; the licence is what differs. Counted across the catalog, never asserted. */
+function LicenceFigure({ models }: { models: catalog.ModelListItemDTO[] }) {
+  const order: LicenseOpenness[] = ['permissive', 'restricted', 'noncommercial', 'unknown'];
+  const counts = models.reduce<Record<string, number>>((acc, m) => {
+    const key = licenseOpenness(m.licenses);
+    return { ...acc, [key]: (acc[key] ?? 0) + 1 };
+  }, {});
+  const shown = order.filter((k) => counts[k]);
+  if (!models.length) return null;
+  return (
+    <figure className="learn-figure">
+      <div className={`licence-bar t-${shown.length === 1 ? 'one' : 'many'}`} role="img" aria-label={shown.map((k) => `${counts[k]} ${OPENNESS_TEXT[k].label}`).join(', ')}>
+        {shown.map((k) => <span key={k} className={`seg seg-${k}`} style={{ flexGrow: counts[k] }} />)}
+      </div>
+      <ul className="licence-key">
+        {shown.map((k) => (
+          <li key={k}>
+            <span className={`dot seg-${k}`} aria-hidden="true" />
+            <b className="num">{counts[k]}</b>
+            <span>{OPENNESS_TEXT[k].label}<span className="sub">{OPENNESS_TEXT[k].detail}</span></span>
+          </li>
+        ))}
+      </ul>
+      <figcaption>
+        All {models.length} models tracked here publish their weights. What differs is the licence on them — which is the part the word “open” does not tell you.
+      </figcaption>
+    </figure>
+  );
+}
+
+/** The same model as published at several precisions. The sizes are the real files, so the trade-off is visible. */
+function SizeFigure({ model }: { model: catalog.ModelDetailDTO }) {
+  const byScheme = new Map<string, { name: string; bits: number; bytes: number; slug: string; modelSlug: string }>();
+  for (const v of model.variants) {
+    for (const a of v.artifacts) {
+      if (a.sizeBytes == null) continue;
+      const seen = byScheme.get(a.schemeName);
+      if (!seen || a.sizeBytes > seen.bytes) byScheme.set(a.schemeName, { name: a.schemeName, bits: a.bitsPerWeight, bytes: a.sizeBytes, slug: a.slug, modelSlug: model.slug });
+    }
+  }
+  const sizes = [...byScheme.values()].sort((a, b) => b.bytes - a.bytes);
+  if (sizes.length < 2) return null;
+  const largest = sizes[0]!;
+  const smallest = sizes[sizes.length - 1]!;
+  const share = Math.round((smallest.bytes / largest.bytes) * 100);
+  return (
+    <figure className="learn-figure">
+      <div className="fig-head">
+        <h3><Link href={`/models/${model.slug}`}>{model.name}</Link>, as published</h3>
+        <span className="small muted">{sizes.length} precisions on file</span>
+      </div>
+      <div className="size-bars">
+        {sizes.map((s) => (
+          <LinearBar key={s.name} value={s.bytes} max={largest.bytes} label={`${s.name} · ${s.bits}-bit`} display={formatBytes(s.bytes)} color={s === smallest ? 'var(--accent)' : undefined} />
+        ))}
+      </div>
+      <figcaption>
+        One model, {sizes.length} downloads — <Explain term="quantization" /> stores each weight in fewer bits, so {smallest.name} is {share}% the size of {largest.name}.
+        The file has to fit in memory with room left over for the conversation, which is why the 4-bit downloads are the usual choice.{' '}
+        <Link className="link" href={`/run`}>See what fits your machine →</Link>
+      </figcaption>
+    </figure>
+  );
+}
+
+/** Five levels of one real name, outside in. The rung a reader is stuck on is usually variant or quantization. */
+function LadderFigure({ model }: { model: catalog.ModelDetailDTO }) {
+  const instruct = model.variants.find((v) => v.kind === 'instruct') ?? model.variants[0];
+  const thirdParty = model.variants.find((v) => v.publisher.slug !== model.developer.slug);
+  const download = instruct?.artifacts.find((a) => a.bitsPerWeight <= 5) ?? instruct?.artifacts[0];
+  const rungs = [
+    { level: 'Family', name: model.family.name, href: `/models?family=${model.family.slug}`, what: `A lineage from one developer — ${model.developer.name}.` },
+    { level: 'Release', name: model.release.name, href: `/models?family=${model.family.slug}`, what: model.release.releasedOn ? `A dated generation within it, published ${formatDate(model.release.releasedOn)}.` : 'A generation within it.' },
+    { level: 'Model', name: model.name, href: `/models/${model.slug}`, what: `One trained size: ${formatParams(model.paramsTotal)} parameters.` },
+    instruct && { level: 'Variant', name: instruct.name, href: `/models/${model.slug}#${instruct.slug}`, what: VARIANT_KIND_EXPLAINER[instruct.kind] ?? `A ${humanize(instruct.kind)} version of those weights.` },
+    download && { level: 'Download', name: download.schemeName, href: `/models/${model.slug}#${instruct?.slug ?? ''}`, what: `One file at one precision — ${formatBytes(download.sizeBytes)}, published by ${download.publisher.name}.` },
+  ].filter(Boolean) as { level: string; name: string; href: string; what: string }[];
+
+  return (
+    <figure className="learn-figure">
+      <ol className="ladder">
+        {rungs.map((r, i) => (
+          <li key={r.level} style={{ marginLeft: i * 14 }}>
+            <span className="rung-level">{r.level}</span>
+            <Link className="rung-name" href={r.href}>{r.name}</Link>
+            <span className="rung-what">{r.what}</span>
+          </li>
+        ))}
+      </ol>
+      <figcaption>
+        {thirdParty
+          ? <>Each level narrows the one above it. The lower two are open to anyone: {thirdParty.name} is a {humanize(thirdParty.kind)} of this model published by {thirdParty.publisher.name}, not by {model.developer.name}.</>
+          : <>Each level narrows the one above it. The lower two are open to anyone — quantizations and fine-tunes are often published by people other than the original lab.</>}
+      </figcaption>
+    </figure>
+  );
+}
+
+/** Which program reads which file, and what it runs on. The pairing is the thing beginners get wrong. */
+function RuntimeFigure({ runtimes }: { runtimes: catalog.ProjectDTO[] }) {
+  const rows = runtimes.filter((r) => r.runtime);
+  if (!rows.length) return null;
+  return (
+    <figure className="learn-figure">
+      <div className="runtime-grid">
+        <div className="rg-head" aria-hidden="true"><span>Runtime</span><span>Reads</span><span>Runs on</span><span>API</span></div>
+        {rows.map((r) => (
+          <div className="rg-row" key={r.slug}>
+            <Link href={`/tools/${r.slug}`}>{r.name}</Link>
+            <span className="mono">{r.runtime!.formats.join(', ')}</span>
+            <span className="small">{r.runtime!.backends.map((b) => BACKEND_LABEL[b] ?? b).join(', ')}</span>
+            <span className="small muted">{r.runtime!.openaiCompatibleApi ? 'OpenAI-compatible' : '—'}</span>
+          </div>
+        ))}
+      </div>
+      <figcaption>
+        A download only runs on a runtime that reads its format — a <span className="mono">gguf</span> file needs llama.cpp or Ollama, an <span className="mono">mlx</span> file needs Apple silicon. Where the API column says OpenAI-compatible, anything built for that API can point at it unchanged.
+      </figcaption>
+    </figure>
   );
 }

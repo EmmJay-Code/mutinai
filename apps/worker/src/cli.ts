@@ -13,6 +13,8 @@ export interface IngestFlags {
   derivatives: boolean;
   recheckUnresolved: boolean;
   feeds?: string[];
+  /** Path to a CSV, for sources that read a researched file rather than a network endpoint. */
+  file?: string;
 }
 
 export function parseCommand(argv: string[]) {
@@ -26,6 +28,7 @@ export function parseCommand(argv: string[]) {
       'dry-run': { type: 'boolean', default: false },
       repos: { type: 'string' },
       feeds: { type: 'string' },
+      file: { type: 'string' },
       authors: { type: 'string' },
       known: { type: 'boolean', default: false },
       derivatives: { type: 'boolean', default: false },
@@ -53,6 +56,7 @@ export function parseCommand(argv: string[]) {
     derivatives: values.derivatives,
     recheckUnresolved: values['recheck-unresolved'],
     feeds: list(values.feeds),
+    file: values.file,
   };
   return { positionals, ingest, once: values.once, source: values.source, reason: values.reason, status: values.status, note: values.note };
 }

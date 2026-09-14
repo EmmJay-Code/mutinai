@@ -24,6 +24,7 @@ import type {
   ArtifactSetRecord,
   EventRecord,
   FetchContext,
+  HardwareDeviceRecord,
   Identifier,
   NormalizedRecord,
   OrganizationRef,
@@ -78,6 +79,7 @@ export const REVIEW_REASONS = {
   unmapped_license: 'License identifier has no Mutinai license record',
   new_organization: 'Publisher account recorded from a source; not a recognized organization unless an editor promotes it',
   fact_conflict: 'Source-reported fact differs from the canonical value',
+  unclassified_device: 'Hardware specifications for a device Mutinai does not track; needs its kind, memory kind and backends before it can be created',
   unsupported_repo: 'Published item Mutinai does not model (e.g. a LoRA adapter)',
   source_unavailable: 'Source no longer serves an item that was previously ingested',
   ontology_rejected: 'Rejected by ontology validation',
@@ -409,6 +411,8 @@ async function applyRecord(ctx: ApplyContext, record: NormalizedRecord): Promise
       return applyProject(ctx, record);
     case 'event':
       return applyEvent(ctx, record);
+    case 'hardware_device':
+      return applyHardwareDevice(ctx, record);
     case 'unsupported':
       return applyUnsupported(ctx, record);
   }
@@ -902,6 +906,76 @@ async function applyEvent(ctx: ApplyContext, r: EventRecord): Promise<void> {
     entityIds: [...new Set(entityIds)],
   });
 }
+
+/**
+ * Specifications a person read off a manufacturer's page.
+ *
+ * Only the fields the record carries are touched, each asserted separately so its provenance is the page this row
+ * cites. Creating a device needs the editor's classification (what kind it is, how its memory works, what runs on
+ * it) because no spec page states those in Mutinai's terms; without it the row waits in review rather than being
+ * guessed into existence.
+ */
+async function applyHardwareDevice(ctx: ApplyContext, r: HardwareDeviceRecord): Promise<void> {
+  let deviceId = await resolveIdentifier(ctx.tx, r.identifier);
+  if (!deviceId) deviceId = (await resolveAlias(ctx.tx, r.name, ['hardware_device']))?.id ?? null;
+
+  if (!deviceId) {
+    if (!r.classification) {
+      raise(ctx, {
+        reason: 'unclassified_device',
+        subject: r.name,
+        detail: `${r.name}: not a tracked device; add device kind, memory kind and backends to create it`,
+        candidates: await findCandidates(ctx.tx, r.name, ['hardware_device']),
+        suggestion: { name: r.name, vendor: r.vendor.name, facts: Object.fromEntries(r.facts.map((f) => [f.field, f.value])) },
+      });
+      return;
+    }
+    const vendorId = await resolveOrCreateOrganization(ctx, r.vendor);
+    const slug = await uniqueSlug(ctx.tx, 'hardware_device', r.identifier.value);
+    deviceId = await createEntity(ctx.tx, { kind: 'hardware_device', slug, name: r.name });
+    // The stated facts go in with the row: a dedicated-memory device is invalid without its memory size, so the
+    // insert cannot be an empty shell filled in afterwards.
+    const stated = Object.fromEntries(r.facts.map((f) => [f.field, f.value]));
+    await ctx.tx.insert(s.hardwareDevice).values({
+      id: deviceId,
+      vendorOrgId: vendorId,
+      deviceKind: r.classification.deviceKind,
+      memoryKind: r.classification.memoryKind,
+      backends: r.classification.backends,
+      memoryGb: stated.memoryGb == null ? null : Number(stated.memoryGb),
+      memoryType: stated.memoryType == null ? null : String(stated.memoryType),
+      memoryBandwidthGbps: stated.memoryBandwidthGbps == null ? null : Number(stated.memoryBandwidthGbps),
+      tdpWatts: stated.tdpWatts == null ? null : Number(stated.tdpWatts),
+      releasedOn: stated.releasedOn == null ? null : String(stated.releasedOn),
+      launchPriceUsd: stated.launchPriceUsd == null ? null : Number(stated.launchPriceUsd),
+    });
+    ctx.stats.entitiesCreated += 1;
+  }
+
+  // An existing device keeps its own memory model: a size asserted against a unified or RAM-only device would
+  // describe the machine, not the chip, and the ontology rejects it.
+  const [existing] = await ctx.tx.select({ memoryKind: s.hardwareDevice.memoryKind }).from(s.hardwareDevice).where(eq(s.hardwareDevice.id, deviceId));
+  let facts = r.facts;
+  if (existing && existing.memoryKind !== 'dedicated' && facts.some((f) => f.field === 'memoryGb')) {
+    raise(ctx, { reason: 'fact_conflict', subject: r.name, blocking: false, detail: `${r.name}: memory size not applied — this device has ${existing.memoryKind} memory, which is sized by the system` });
+    facts = facts.filter((f) => f.field !== 'memoryGb');
+  }
+
+  await linkExternalId(ctx.tx, { ...r.identifier, entityId: deviceId, firstSeenRecordId: ctx.sourceRecordId });
+
+  const columns: Record<string, (value: string | number) => Promise<boolean>> = {
+    memoryGb: async (v) => changed(await ctx.tx.update(s.hardwareDevice).set({ memoryGb: Number(v) }).where(sql`${s.hardwareDevice.id} = ${deviceId} and ${s.hardwareDevice.memoryGb} is distinct from ${Number(v)}`).returning({ id: s.hardwareDevice.id })),
+    memoryType: async (v) => changed(await ctx.tx.update(s.hardwareDevice).set({ memoryType: String(v) }).where(sql`${s.hardwareDevice.id} = ${deviceId} and ${s.hardwareDevice.memoryType} is distinct from ${String(v)}`).returning({ id: s.hardwareDevice.id })),
+    memoryBandwidthGbps: async (v) => changed(await ctx.tx.update(s.hardwareDevice).set({ memoryBandwidthGbps: Number(v) }).where(sql`${s.hardwareDevice.id} = ${deviceId} and ${s.hardwareDevice.memoryBandwidthGbps} is distinct from ${Number(v)}`).returning({ id: s.hardwareDevice.id })),
+    tdpWatts: async (v) => changed(await ctx.tx.update(s.hardwareDevice).set({ tdpWatts: Number(v) }).where(sql`${s.hardwareDevice.id} = ${deviceId} and ${s.hardwareDevice.tdpWatts} is distinct from ${Number(v)}`).returning({ id: s.hardwareDevice.id })),
+    releasedOn: async (v) => changed(await ctx.tx.update(s.hardwareDevice).set({ releasedOn: String(v) }).where(sql`${s.hardwareDevice.id} = ${deviceId} and ${s.hardwareDevice.releasedOn} is distinct from ${String(v)}::date`).returning({ id: s.hardwareDevice.id })),
+    launchPriceUsd: async (v) => changed(await ctx.tx.update(s.hardwareDevice).set({ launchPriceUsd: Number(v) }).where(sql`${s.hardwareDevice.id} = ${deviceId} and ${s.hardwareDevice.launchPriceUsd} is distinct from ${Number(v)}`).returning({ id: s.hardwareDevice.id })),
+  };
+  for (const fact of facts) await assertField(ctx, deviceId, fact.field, fact.value, () => columns[fact.field]!(fact.value));
+  ctx.touched.set(deviceId, 'other');
+}
+
+const changed = (rows: { id: string }[]) => rows.length > 0;
 
 async function applyUnsupported(ctx: ApplyContext, r: UnsupportedRecord): Promise<void> {
   const entityId = await resolveIdentifier(ctx.tx, r.identifier);

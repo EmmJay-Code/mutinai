@@ -6,7 +6,7 @@ import { IfContributing } from '@/components/preview';
 import { notFound } from 'next/navigation';
 import { PerformanceTable, ProvenanceBlock, RatingSummary, ReviewList } from '@/components/results';
 import { hideSampleCommunityContent, SAMPLE_EMPTY_TEXT } from '@/lib/community-visibility';
-import { Crumbs, Empty, EntityLink, EntitySection, Glance, LicenseShort, SectionNav } from '@/components/ui';
+import { Crumbs, Empty, EntityLink, EntitySection, Explain, Glance, LicenseShort, SectionNav } from '@/components/ui';
 import { EntityMark, entityTypeFor } from '@/components/viz';
 import { formatDate, humanize } from '@/lib/format';
 import { BACKEND_LABEL } from '@/lib/hardware';
@@ -91,7 +91,7 @@ export default async function ToolPage({ params }: { params: Params }) {
           {rt ? (
             <div>
               <h2>What it runs</h2>
-              <div className="subhead" style={{ margin: '10px 0 4px' }}>Model formats</div>
+              <div className="subhead" style={{ margin: '10px 0 4px' }}>Model <Explain term="weight-format" align="end">formats</Explain></div>
               <div className="tags">{WEIGHT_FORMATS.map((f) => <Check key={f} on={rt.formats.includes(f)} label={f} />)}</div>
               <div className="subhead" style={{ margin: '10px 0 4px' }}>Hardware</div>
               <div className="tags">{COMPUTE_BACKENDS.map((b) => <Check key={b} on={rt.backends.includes(b)} label={BACKEND_LABEL[b] ?? b} />)}</div>
@@ -139,7 +139,7 @@ export default async function ToolPage({ params }: { params: Params }) {
       </div>
 
       {rt && (
-        <EntitySection id="performance" title="Measured performance with this runtime">
+        <EntitySection id="performance" title="Measured performance with this runtime" intro={<>Throughput members and projects recorded, in <Explain term="tokens-per-second" />.</>}>
           <PerformanceTable results={project.performanceResults} showModel />
         </EntitySection>
       )}

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Empty, LicenseShort, PageHead } from '@/components/ui';
 import { CapabilityBars, MemoryScale, SystemsMeter } from '@/components/viz';
 import { CAPABILITY_LABEL, formatContext, formatDate, formatParams, humanize } from '@/lib/format';
-import { measurementPolicy } from '@/lib/community-visibility';
+import { hideSampleCommunityContent, measurementPolicy } from '@/lib/community-visibility';
 
 export const metadata: Metadata = { title: 'Compare models' };
 
@@ -34,7 +34,8 @@ export default async function ComparePage({ searchParams }: { searchParams: SP }
   const topOf = (slug: string) => Math.max(...bestScores.filter((b) => b.benchmarkSlug === slug).map((b) => b.value));
   const score = (model: string, bench: string) => bestScores.find((b) => b.modelSlug === model && b.benchmarkSlug === bench)?.value ?? null;
 
-  const rows: [string, (m: (typeof models)[number]) => React.ReactNode][] = [
+  type Row = [string, (m: (typeof models)[number]) => React.ReactNode];
+  const rows: Row[] = [
     ['Developer', (m) => m.detail.developer.name],
     ['Released', (m) => formatDate(m.detail.release.releasedOn)],
     ['Size', (m) => <span className="num">{formatParams(m.detail.paramsTotal)}{m.detail.paramsActive ? ` · ${formatParams(m.detail.paramsActive)} active` : ''}</span>],
@@ -45,7 +46,8 @@ export default async function ComparePage({ searchParams }: { searchParams: SP }
     ['Capabilities', (m) => m.item.capabilities.map((c) => CAPABILITY_LABEL[c] ?? humanize(c)).join(', ')],
     ['License', (m) => <LicenseShort commercialUse={m.item.licenses.some((l) => l.commercialUse === 'allowed') ? 'allowed' : m.item.licenses[0]?.commercialUse} name={m.item.licenses.map((l) => l.name).join('; ')} />],
     ['Variants', (m) => `${m.detail.variants.length} · ${m.item.artifactCount} downloads`],
-    ['Community', (m) => `${m.item.runCount} runs · ${m.item.reviewCount} reviews`],
+    // Member run and review tallies are a claim about the model; seeded ones never appear beside a real name.
+    ...(hideSampleCommunityContent() ? [] : [['Community', (m) => `${m.item.runCount} runs · ${m.item.reviewCount} reviews`] as Row]),
   ];
 
   return (

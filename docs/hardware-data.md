@@ -17,6 +17,39 @@ rates and legal constraints, so they are stored differently.
   - `catalog.listLatestPrices` returns the latest per kind, currency and region
   - the UI still reads the legacy columns
 
+## Importing researched specifications
+
+Specs are editorial, so they arrive as a CSV somebody filled in from the manufacturer's own pages:
+
+```bash
+npm run worker -- ingest hardware-specs --file gpu-specs.csv
+npm run worker -- ingest hardware-specs --file gpu-specs.csv --dry-run   # parse and report, write nothing
+```
+
+| Column | Required | Notes |
+|---|---|---|
+| `Full Name` | yes | Matched against existing devices by name, so a known device is updated rather than duplicated |
+| `Manufacturer` | yes | Existing organisation, or recorded as a new one for review |
+| `Source URL` | yes | The page the row's values were read from |
+| `Device Kind` / `Memory Kind` / `Backends` | to create | `gpu`/`soc`/`cpu`/`accelerator`, `dedicated`/`unified`/`none`, and `cuda,rocm,metal,vulkan,cpu` |
+| `Memory GB`, `Memory Type`, `Bandwidth GB/s`, `TDP Watts`, `Release Date`, `Launch Price USD` | no | Whatever the page states |
+
+Header spellings are matched loosely (`Bandwidth GB/s`, `bandwidth_gbps` and `Memory Speed` are the same column), and
+values may carry their units (`24 GB`, `$1,599`, `12/13/2022`).
+
+Two rules the importer enforces, because they are the ones that erode by hand:
+
+- **A value without a page is not a fact.** Every row cites a URL; a row without one is refused, not imported.
+  Provenance is per source record, so one row is one page — specs from a spec sheet and a price from a launch
+  announcement are two rows for the same device, and each field then cites where it was actually read. The device
+  page shows that citation as a `src` link beside the value.
+- **A blank is a blank.** An empty cell means the page did not state it. Nothing is written for that field: no
+  default, no carried-over value, no estimate. A device with no recorded bandwidth shows none.
+
+Rows that cannot be trusted are reported and skipped rather than partly applied: a non-numeric figure, an
+unreadable date, a value outside a plausible range, or an unknown device with no classification (which becomes a
+review item instead — the pipeline never invents what kind of device something is).
+
 ## Stable specifications
 | Source | Use | Notes |
 |---|---|---|

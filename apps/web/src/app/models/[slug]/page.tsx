@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { IfContributing } from '@/components/preview';
 import { notFound } from 'next/navigation';
 import { PerformanceTable, ProvenanceBlock, RatingSummary, ReviewList, SubmissionList } from '@/components/results';
-import { Basis, Crumbs, DataOrigin, Disclosure, Empty, EntitySection, Facts, FitBadge, Glance, LicenseShort, SectionNav, Speed, Tag } from '@/components/ui';
+import { Basis, Crumbs, DataOrigin, Disclosure, Empty, EntitySection, Explain, Facts, FitBadge, Glance, LicenseShort, SectionNav, Speed, Tag } from '@/components/ui';
 import { CapabilityDetail, EntityMark, MemoryScale, SystemsMeter } from '@/components/viz';
 import { CAPABILITY_LABEL, formatBytes, formatContext, formatDate, formatMonthYear, formatNumber, formatParams, humanize, isoDate, paramsInWords, VARIANT_KIND_EXPLAINER } from '@/lib/format';
 import { hideSampleCommunityContent, measurementPolicy, SAMPLE_EMPTY_TEXT } from '@/lib/community-visibility';
@@ -96,7 +96,9 @@ export default async function ModelPage({ params }: { params: Params }) {
   const childrenOf = (slug: string) => model.variants.filter((v) => parentOf(v)?.slug === slug);
 
   const lastChange = [...events.map((e) => new Date(e.occurredAt)), ...provenance.assertions.map((a) => new Date(a.assertedAt)), ...submissions.map((s) => new Date(s.createdAt)), ...reviews.map((r) => new Date(r.createdAt))].sort((a, b) => b.getTime() - a.getTime())[0];
-  const archPhrase = model.architecture === 'moe' ? `mixture-of-experts model using ~${paramsInWords(model.paramsActive ?? 0)} parameters per token` : 'dense model';
+  const archPhrase = model.architecture === 'moe'
+    ? <><Explain term="moe">mixture-of-experts</Explain> model using ~{paramsInWords(model.paramsActive ?? 0)} parameters per token</>
+    : <>dense model</>;
 
   return (
     <>
@@ -109,14 +111,14 @@ export default async function ModelPage({ params }: { params: Params }) {
         <header className="entity-hero">
           <div className="kicker"><EntityMark type="model" word /> · {model.release.name}{model.release.releasedOn ? ` · ${formatMonthYear(model.release.releasedOn)}` : ''} <DataOrigin sources={provenance.sources} /></div>
           <h1>{model.name}</h1>
-          <p className="lede">A {paramsInWords(model.paramsTotal)}-parameter {archPhrase} from {model.developer.name}. {model.release.summary}</p>
+          <p className="lede">A {paramsInWords(model.paramsTotal)}-<Explain term="parameters">parameter</Explain> {archPhrase} from {model.developer.name}. {model.release.summary}</p>
           <Glance
             items={[
               ['Size', formatParams(model.paramsTotal), model.paramsActive ? `${formatParams(model.paramsActive)} active` : 'dense'],
               ['Memory to run', listItem?.minMemoryGb != null ? `~${Math.ceil(listItem.minMemoryGb)} GB` : '—', 'smallest, 8K ctx'],
               ['Context', formatContext(model.contextLength), 'tokens'],
               ['License', <LicenseShort key="l" commercialUse={commercial} />, licenses.map((l) => l.name).join('; ')],
-              ['Updated', lastChange ? formatDate(lastChange) : '—', `${plural(listItem?.runCount ?? 0, 'run')} · ${plural(listItem?.reviewCount ?? 0, 'review')}`],
+              ['Updated', lastChange ? formatDate(lastChange) : '—', hideCommunity ? undefined : `${plural(listItem?.runCount ?? 0, 'run')} · ${plural(listItem?.reviewCount ?? 0, 'review')}`],
             ]}
           />
           <div className="page-head-actions tight">
@@ -162,7 +164,7 @@ export default async function ModelPage({ params }: { params: Params }) {
         )}
       </EntitySection>
 
-      <EntitySection id="compatibility" title="Where it runs" intro="Best-fitting version on each reference system, 8K context." more={<Link href="/run">Your hardware →</Link>}>
+      <EntitySection id="compatibility" title="Where it runs" intro={<>Best-fitting version on each reference system, at an 8K <Explain term="context" />.</>} more={<Link href="/run">Your hardware →</Link>}>
         {systems.length === 0 ? <Empty>No downloadable versions recorded yet.</Empty> : (
           <div className="fit-groups">
             {[
@@ -188,7 +190,7 @@ export default async function ModelPage({ params }: { params: Params }) {
         )}
       </EntitySection>
 
-      <EntitySection id="benchmarks" title="Benchmarks" intro="Developer-reported; prompts and settings differ between labs. Bars are relative to the best open result.">
+      <EntitySection id="benchmarks" title="Benchmarks" intro={<>Each <Explain term="benchmark" /> is developer-reported; prompts and settings differ between labs. Bars are relative to the best open result.</>}>
         {benchSlugs.length === 0 ? <Empty>No benchmark results recorded for this model.</Empty> : (
           <div className="table-wrap">
             <table className="data">
@@ -225,7 +227,7 @@ export default async function ModelPage({ params }: { params: Params }) {
         )}
       </EntitySection>
 
-      <EntitySection id="variants" title="Variants & downloads" intro="Each variant is a separate set of weights; expand for quantized downloads and memory.">
+      <EntitySection id="variants" title="Variants & downloads" intro={<>Each variant is a separate set of weights. Expand one for its downloads: <Explain term="quantization" /> trades a little quality for a much smaller file, and the memory column adds the <Explain term="kv-cache" /> a conversation needs on top.</>}>
         {model.variants.map((v, i) => {
           const thirdParty = v.publisher.slug !== model.developer.slug;
           return (

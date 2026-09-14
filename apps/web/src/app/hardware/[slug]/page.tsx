@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { IfContributing } from '@/components/preview';
 import { notFound } from 'next/navigation';
 import { PerformanceTable, ProvenanceBlock, RatingSummary, ReviewList, SubmissionList } from '@/components/results';
-import { Crumbs, Empty, EntitySection, Facts, FitBadge, Glance, SectionNav, Speed } from '@/components/ui';
+import { Crumbs, Empty, EntitySection, Explain, Facts, FitBadge, Glance, SectionNav, Speed } from '@/components/ui';
 import { EntityMark, LinearBar, MemoryScale, ParamsReach } from '@/components/viz';
 import { formatDate, formatGb, formatParams, humanize } from '@/lib/format';
 import { hideSampleCommunityContent, measurementPolicy, SAMPLE_EMPTY_TEXT } from '@/lib/community-visibility';
@@ -36,11 +36,12 @@ export default async function DevicePage({ params }: { params: Params }) {
   if (!device) notFound();
   const viewer = await getViewer();
   const primarySystem = device.configurations[0];
-  const [reviews, aggregates, submissions, provenance, events, picks, everyDevice] = await Promise.all([
+  const [reviews, aggregates, submissions, provenance, citations, events, picks, everyDevice] = await Promise.all([
     community.listReviewsForEntities(db, [device.id], viewer),
     community.ratingAggregates(db, [device.id]),
     community.listSubmissions(db, { deviceId: device.id }, viewer),
     catalog.getProvenance(db, device.id),
+    catalog.listFieldCitations(db, device.id),
     catalog.listEvents(db, { entityId: device.id }),
     primarySystem ? compatQueries.loadReferenceHardware(db, primarySystem.slug).then((hw) => (hw ? compatQueries.runCompatibility(db, hw, { contextLength: 8192, ...measurementPolicy() }) : [])) : Promise.resolve([]),
     catalog.listDevices(db),
@@ -81,6 +82,10 @@ export default async function DevicePage({ params }: { params: Params }) {
         <aside className="verdict" aria-label="At a glance">
           <div>
             <h2>Capacity <span>{primarySystem ? primarySystem.name.replace(/\s*\(.*\)$/, '') : ''}</span></h2>
+            <p className="small muted" style={{ margin: '4px 0 0' }}>
+              {device.memoryKind === 'unified' ? <><Explain term="unified-memory" align="end" /> decides what fits;</> : <><Explain term="vram" align="end" /> decides what fits;</>}{' '}
+              <Explain term="memory-bandwidth" align="end">memory speed</Explain> decides how fast it answers.
+            </p>
             <div style={{ display: 'grid', gap: 10, marginTop: 8 }}>
               {usable && <ParamsReach maxB={maxParamsAtQ4(usable)} label="Holds at 4-bit" />}
               {usable && <MemoryScale gb={usable} label="Usable memory" />}
@@ -153,14 +158,14 @@ export default async function DevicePage({ params }: { params: Params }) {
             items={[
               ['Vendor', device.vendor.name],
               ['Type', kindLabel],
-              ['Memory', device.memoryKind === 'dedicated' ? formatGb(device.memoryGb) : device.memoryKind === 'unified' ? 'Unified (per system)' : 'Uses system RAM'],
-              ['Memory type', device.memoryType],
-              ['Bandwidth', device.memoryBandwidthGbps ? `${device.memoryBandwidthGbps} GB/s` : '—'],
+              ['Memory', <Cited key="m" citation={citations.memoryGb}>{device.memoryKind === 'dedicated' ? formatGb(device.memoryGb) : device.memoryKind === 'unified' ? 'Unified (per system)' : 'Uses system RAM'}</Cited>],
+              ['Memory type', <Cited key="mt" citation={citations.memoryType}>{device.memoryType}</Cited>],
+              ['Bandwidth', <Cited key="bw" citation={citations.memoryBandwidthGbps}>{device.memoryBandwidthGbps ? `${device.memoryBandwidthGbps} GB/s` : '—'}</Cited>],
               ['GPU-usable share', device.memoryKind === 'unified' ? `${Math.round((device.unifiedUsableFraction ?? 0.75) * 100)}% by default` : '—'],
               ['Backends', device.backends.map((b) => `${b} (${BACKEND_LABEL[b] ?? b})`).join(', ')],
-              ['TDP', device.tdpWatts ? `${device.tdpWatts} W` : '—'],
-              ['Released', formatDate(device.releasedOn)],
-              ['Launch price', device.launchPriceUsd ? `$${device.launchPriceUsd.toLocaleString('en-US')}` : '—'],
+              ['TDP', <Cited key="tdp" citation={citations.tdpWatts}>{device.tdpWatts ? `${device.tdpWatts} W` : '—'}</Cited>],
+              ['Released', <Cited key="rel" citation={citations.releasedOn}>{formatDate(device.releasedOn)}</Cited>],
+              ['Launch price', <Cited key="p" citation={citations.launchPriceUsd}>{device.launchPriceUsd ? `$${device.launchPriceUsd.toLocaleString('en-US')}` : '—'}</Cited>],
             ]}
           />
           {device.successors.length > 0 && (
@@ -174,6 +179,20 @@ export default async function DevicePage({ params }: { params: Params }) {
           {events.length > 0 && <ul className="list-plain" style={{ marginTop: 8 }}>{events.map((e) => <li key={e.id} className="small"><span className="num muted">{formatDate(e.occurredAt)}</span> {e.title}</li>)}</ul>}
         </EntitySection>
       </div>
+    </>
+  );
+}
+
+/**
+ * A specification with a link to the page it was read from. Nothing is added when a value has no recorded citation,
+ * so the mark's presence is itself information: this figure can be checked, that one is inherited demo data.
+ */
+function Cited({ citation, children }: { citation?: catalog.FieldCitationDTO; children: React.ReactNode }) {
+  if (!citation?.url) return <>{children}</>;
+  return (
+    <>
+      {children}
+      <a className="source-mark" href={citation.url} rel="noopener noreferrer" title={`Stated by ${citation.sourceName}: ${citation.url}`}>src</a>
     </>
   );
 }
