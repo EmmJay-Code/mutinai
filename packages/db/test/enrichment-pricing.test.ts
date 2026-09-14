@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { enrichmentTask, type EnrichmentProvider, type EnrichmentRequest } from '@mutinai/domain';
 import type { DatabaseHandle } from '../src/client';
 import { runEnrichment } from '../src/enrichment';
-import { listLatestPrices } from '../src/queries/catalog';
+import { listLatestDevicePrices, listLatestPrices } from '../src/queries/catalog';
 import { createTestDatabase, resetAndSeed } from '../src/testing';
 import { OntologyError, recordPriceObservation } from '../src/writers';
 
@@ -77,6 +77,16 @@ describe('hardware price observations', () => {
     await recordPriceObservation(h.db, { entityId: gpu, priceKind: 'used', amount: 1450, currency: 'USD', region: 'US', observedAt: new Date('2026-09-10T00:00:00Z'), sourceName: 'Marketplace API', sourceUrl: 'https://example.com/b' });
     const prices = await listLatestPrices(h.db, gpu);
     expect(prices.map((p) => [p.priceKind, p.amount, p.region])).toEqual([['launch_msrp', 1599, null], ['used', 1450, 'US']]);
+  });
+
+  it('lists the newest market observation per device, and never a launch price', async () => {
+    const gpu = await entityId('hardware_device', 'nvidia-rtx-5090');
+    expect((await listLatestDevicePrices(h.db))['nvidia-rtx-5090'], 'nothing until a market source is recorded').toBeUndefined();
+    await recordPriceObservation(h.db, { entityId: gpu, priceKind: 'launch_msrp', amount: 1999, currency: 'USD', observedAt: new Date('2025-01-30T00:00:00Z'), sourceName: 'NVIDIA launch announcement' });
+    expect((await listLatestDevicePrices(h.db))['nvidia-rtx-5090'], 'a launch MSRP is a historical fact, not a market observation').toBeUndefined();
+    await recordPriceObservation(h.db, { entityId: gpu, priceKind: 'retail_new', amount: 2399, currency: 'USD', region: 'US', observedAt: new Date('2026-09-01T00:00:00Z'), sourceName: 'Retailer API', sourceUrl: 'https://example.com/a' });
+    await recordPriceObservation(h.db, { entityId: gpu, priceKind: 'retail_new', amount: 2199, currency: 'USD', region: 'US', observedAt: new Date('2026-09-10T00:00:00Z'), sourceName: 'Retailer API', sourceUrl: 'https://example.com/b' });
+    expect((await listLatestDevicePrices(h.db))['nvidia-rtx-5090']).toMatchObject({ priceKind: 'retail_new', amount: 2199, sourceName: 'Retailer API' });
   });
 
   it('rejects unsourced market prices and non-hardware subjects', async () => {

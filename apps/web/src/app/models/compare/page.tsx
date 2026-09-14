@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Empty, LicenseShort, PageHead } from '@/components/ui';
 import { CapabilityBars, MemoryScale, SystemsMeter } from '@/components/viz';
 import { CAPABILITY_LABEL, formatContext, formatDate, formatParams, humanize } from '@/lib/format';
+import { measurementPolicy } from '@/lib/community-visibility';
 
 export const metadata: Metadata = { title: 'Compare models' };
 
@@ -25,7 +26,7 @@ export default async function ComparePage({ searchParams }: { searchParams: SP }
     Promise.all(slugs.map((s) => catalog.getModelDetail(db, s))),
     catalog.listModels(db),
     catalog.listCapabilityProfiles(db),
-    compatQueries.compatSummaryByModel(db, { contextLength: 8192 }),
+    compatQueries.compatSummaryByModel(db, { contextLength: 8192, ...measurementPolicy() }),
     catalog.listBestBenchmarkScores(db),
   ]);
   const models = details.flatMap((d) => (d ? [{ detail: d, item: list.find((m) => m.slug === d.slug)! }] : []));

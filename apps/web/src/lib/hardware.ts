@@ -1,5 +1,5 @@
 import type { catalog } from '@mutinai/db';
-import { compat, type PriceQuote } from '@mutinai/domain';
+import { compat, priceFreshness, type PriceObservationKind, type PriceQuote } from '@mutinai/domain';
 
 /** GiB per billion parameters for a typical 4-bit (Q4_K_M) download. */
 const GIB_PER_B_Q4 = ((4.89 / 8) * 1e9) / 1024 ** 3;
@@ -68,3 +68,19 @@ export function systemPrice(c: catalog.ConfigurationDTO): PriceQuote | null {
 }
 
 export const gpuCount = (c: catalog.ConfigurationDTO) => c.components.reduce((n, x) => n + (x.memoryKind === 'dedicated' ? x.count : 0), 0);
+
+/**
+ * The best price Mutinai actually holds for a device: a market price checked recently enough to still describe the
+ * market, otherwise the manufacturer's launch price. A stale observation is dropped rather than shown as current
+ * (docs/hardware-data.md), and nothing is ever inferred from the prices Mutinai does hold.
+ */
+export function bestDevicePrice(d: catalog.DeviceDTO, observed?: catalog.PriceObservationDTO, now = new Date()): PriceQuote | null {
+  if (!observed || priceFreshness(observed.priceKind as PriceObservationKind, new Date(observed.observedAt), now) !== 'current') return devicePrice(d);
+  return {
+    amount: observed.amount,
+    currency: observed.currency,
+    kind: observed.priceKind === 'used' ? 'used' : 'observed',
+    source: observed.sourceName,
+    checkedOn: new Date(observed.observedAt).toISOString().slice(0, 10),
+  };
+}

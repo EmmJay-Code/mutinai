@@ -150,6 +150,41 @@ export function selectDiscover<E extends FreshnessEvent>(events: readonly E[], n
   return { mode, topStory, latest, recentReleaseCount };
 }
 
+export interface KindGroup {
+  /** Stable key for the group, used by the caller for copy and links. */
+  key: string;
+  kinds: readonly string[];
+}
+
+export interface KindDigest<E> {
+  key: string;
+  /** Eligible events of this group in the last `recentDays` days. */
+  recentCount: number;
+  /** Newest eligible event of this group, whenever it happened; null when nothing of the kind is tracked. */
+  latest: E | null;
+}
+
+/**
+ * How much has happened in each part of the ecosystem — model releases, runtimes, hardware, benchmarks, research.
+ *
+ * Follows the same rules as every other time-sensitive surface: event time only, fixtures excluded once live data
+ * exists, duplicates collapsed, noise (significance 0) ignored. The count is deliberately windowed and the latest
+ * item deliberately is not: a quiet corner of the ecosystem then reads as "nothing in the last 30 days, the last
+ * one was in March" instead of being silently dropped.
+ */
+export function digestByKind<E extends FreshnessEvent>(events: readonly E[], now: Date, groups: readonly KindGroup[]): KindDigest<E>[] {
+  const { events: eligible } = currentEvents(events, now);
+  const usable = eligible.filter((e) => eventSignificance(e) >= FRESHNESS.latestMinSignificance).sort(byNewest);
+  return groups.map(({ key, kinds }) => {
+    const mine = usable.filter((e) => kinds.includes(e.kind));
+    return {
+      key,
+      recentCount: mine.filter((e) => now.getTime() - time(e.occurredAt) <= FRESHNESS.recentDays * DAY).length,
+      latest: mine[0] ?? null,
+    };
+  });
+}
+
 export interface MonthActivity {
   month: string;
   count: number;

@@ -681,11 +681,23 @@ export async function getEntityById(db: Executor, id: string) {
     where e.id = ${id}`);
 }
 
-export async function listBenchmarks(db: Executor, kind?: 'capability' | 'performance') {
-  return rows<{ id: string; slug: string; name: string; kind: string; metrics: { id: string; key: string; label: string; unit: string; higherIsBetter: boolean }[] }>(db, sql`
-    select b.id, be.slug, be.name, b.benchmark_kind as kind,
+export interface BenchmarkDTO {
+  id: string;
+  slug: string;
+  name: string;
+  /** What the benchmark tests, as recorded on the entity. */
+  summary: string | null;
+  kind: string;
+  metrics: { id: string; key: string; label: string; unit: string; higherIsBetter: boolean }[];
+  resultCount: number;
+}
+
+export async function listBenchmarks(db: Executor, kind?: 'capability' | 'performance'): Promise<BenchmarkDTO[]> {
+  return rows<BenchmarkDTO>(db, sql`
+    select b.id, be.slug, be.name, be.summary, b.benchmark_kind as kind,
       (select jsonb_agg(jsonb_build_object('id', m.id, 'key', m.key, 'label', m.label, 'unit', m.unit, 'higherIsBetter', m.higher_is_better) order by m.key)
-        from ecosystem.benchmark_metric m where m.benchmark_id = b.id) as metrics
+        from ecosystem.benchmark_metric m where m.benchmark_id = b.id) as metrics,
+      (select count(*)::int from ecosystem.benchmark_result r where r.benchmark_id = b.id) as "resultCount"
     from ecosystem.benchmark b join ecosystem.entity be on be.id = b.id
     ${kind ? sql`where b.benchmark_kind = ${kind}` : sql``}
     order by be.name`);
@@ -799,6 +811,22 @@ export interface PriceObservationDTO {
   observedAt: Date;
   sourceName: string;
   sourceUrl: string | null;
+}
+
+/**
+ * Latest market price observation (retail or used) per hardware entity. Launch MSRPs live on the device row and are
+ * historical facts, so they are not returned here. Empty until market prices are actually contracted and recorded;
+ * callers must still check `priceFreshness` before showing one as current (docs/hardware-data.md).
+ */
+export async function listLatestDevicePrices(db: Executor): Promise<Record<string, PriceObservationDTO>> {
+  const observations = await rows<PriceObservationDTO & { slug: string }>(db, sql`
+    select distinct on (e.slug) e.slug,
+      p.price_kind::text as "priceKind", p.amount, p.currency, p.region, p.observed_at as "observedAt", p.source_name as "sourceName", p.source_url as "sourceUrl"
+    from ecosystem.price_observation p
+    join ecosystem.entity e on e.id = p.entity_id
+    where p.price_kind in ('retail_new', 'used')
+    order by e.slug, p.observed_at desc`);
+  return Object.fromEntries(observations.map(({ slug, ...price }) => [slug, price]));
 }
 
 /** Latest observation per price kind, currency and region for a hardware entity. */

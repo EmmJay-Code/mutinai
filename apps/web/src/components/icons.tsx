@@ -13,6 +13,7 @@ const PATHS: Record<string, React.ReactNode> = {
   apple: <><rect x="3" y="3" width="10" height="10" rx="2" /><rect x="6" y="6" width="4" height="4" rx="0.5" /><path d="M6 1v2M10 1v2M6 13v2M10 13v2M1 6h2M1 10h2M13 6h2M13 10h2" /></>,
   workstation: <><rect x="4" y="1.5" width="8" height="13" rx="1" /><path d="M6 4.5h4M6 6.5h4" /><circle cx="8" cy="11" r="1" /></>,
   server: <><rect x="1.5" y="2" width="13" height="5" rx="1" /><rect x="1.5" y="9" width="13" height="5" rx="1" /><path d="M4 4.5h1M4 11.5h1" /></>,
+  learn: <><path d="M8 4.6S6.4 3 3 3v9c3.4 0 5 1.6 5 1.6S9.6 12 13 12V3c-3.4 0-5 1.6-5 1.6z" /><path d="M8 4.6v9" /></>,
   minipc: <><rect x="1.5" y="5" width="13" height="6.5" rx="1.5" /><circle cx="4.5" cy="8.25" r="0.9" /><path d="M8 8.25h4" /></>,
 };
 

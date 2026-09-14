@@ -10,6 +10,16 @@ export const devLoginEnabled = () => process.env.MUTINAI_DEV_LOGIN === '1' && pr
 /** Development sign-in is the only identity provider, so it also gates every community write. */
 export const contributionsEnabled = devLoginEnabled;
 
+/**
+ * Whether the community content in this database can only be sample data.
+ *
+ * A deployment that accepts no sign-in and no contribution has no way to hold a run or review written by a real
+ * member: everything in the `community` schema came from `db:seed`, whose accounts and content are fictional
+ * (see the README). Public surfaces must therefore either label it as sample content or leave it out — never
+ * present it as community activity.
+ */
+export const communityContentIsSample = () => !contributionsEnabled();
+
 /** Resolves the current session once per request. */
 export const getSession = cache(async () => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;

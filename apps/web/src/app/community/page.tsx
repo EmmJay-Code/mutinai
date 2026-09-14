@@ -3,7 +3,7 @@ import { isModerator } from '@mutinai/domain';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { verifySubmission } from '@/app/actions';
-import { IfContributing } from '@/components/preview';
+import { IfContributing, SampleCommunityNotice } from '@/components/preview';
 import { ReviewList, SubmissionList } from '@/components/results';
 import { Disclosure, Section } from '@/components/ui';
 import { searchParam } from '@/lib/format';
@@ -43,6 +43,7 @@ export default async function CommunityPage({ searchParams }: { searchParams: SP
           </div>
         </IfContributing>
       </div>
+      <SampleCommunityNotice />
       <div className="run-summary">
         <div><b>{stats.profiles}</b><span>members</span></div>
         <div><b>{stats.submissions}</b><span>public runs</span></div>

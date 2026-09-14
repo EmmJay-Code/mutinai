@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { IfContributing } from '@/components/preview';
 import { notFound } from 'next/navigation';
 import { PerformanceTable, ProvenanceBlock, RatingSummary, ReviewList } from '@/components/results';
+import { hideSampleCommunityContent, SAMPLE_EMPTY_TEXT } from '@/lib/community-visibility';
 import { Crumbs, Empty, EntityLink, EntitySection, Glance, LicenseShort, SectionNav } from '@/components/ui';
 import { EntityMark, entityTypeFor } from '@/components/viz';
 import { formatDate, humanize } from '@/lib/format';
@@ -51,6 +52,10 @@ export default async function ToolPage({ params }: { params: Params }) {
     catalog.getProvenance(db, project.id),
     catalog.listEvents(db, { entityId: project.id }),
   ]);
+  // See lib/community-visibility: seeded members never speak for a real project.
+  const hideCommunity = hideSampleCommunityContent();
+  const shownReviews = hideCommunity ? [] : reviews;
+  const shownAggregates = hideCommunity ? [] : aggregates;
   const sections = [
     { id: 'relationships', label: 'Relationships' },
     ...(project.runtime ? [{ id: 'performance', label: 'Performance' }] : []),
@@ -107,7 +112,7 @@ export default async function ToolPage({ params }: { params: Params }) {
           )}
           <div>
             <h2>Users say</h2>
-            <div style={{ marginTop: 4 }}><RatingSummary aggregates={aggregates} /></div>
+            <div style={{ marginTop: 4 }}><RatingSummary aggregates={shownAggregates} emptyText={hideCommunity ? SAMPLE_EMPTY_TEXT : undefined} /></div>
           </div>
         </aside>
       </div>
@@ -140,7 +145,7 @@ export default async function ToolPage({ params }: { params: Params }) {
       )}
 
       <div className="split">
-        <EntitySection id="reviews" title="Reviews"><ReviewList reviews={reviews} /></EntitySection>
+        <EntitySection id="reviews" title="Reviews"><ReviewList reviews={shownReviews} emptyText={hideCommunity ? SAMPLE_EMPTY_TEXT : undefined} /></EntitySection>
         <EntitySection id="sources" title="Sources & history"><ProvenanceBlock provenance={provenance} /></EntitySection>
       </div>
     </>

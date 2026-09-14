@@ -8,6 +8,7 @@ import { PerformanceTable, ProvenanceBlock, RatingSummary, ReviewList, Submissio
 import { Crumbs, Empty, EntitySection, Facts, FitBadge, Glance, SectionNav, Speed } from '@/components/ui';
 import { EntityMark, LinearBar, MemoryScale, ParamsReach } from '@/components/viz';
 import { formatDate, formatGb, formatParams, humanize } from '@/lib/format';
+import { hideSampleCommunityContent, measurementPolicy, SAMPLE_EMPTY_TEXT } from '@/lib/community-visibility';
 import { BACKEND_LABEL, DEVICE_KIND_LABEL, deviceSentence, maxParamsAtQ4, pricePerGb, systemSentence, systemUsableGb } from '@/lib/hardware';
 import { getViewer } from '@/lib/session';
 
@@ -41,9 +42,14 @@ export default async function DevicePage({ params }: { params: Params }) {
     community.listSubmissions(db, { deviceId: device.id }, viewer),
     catalog.getProvenance(db, device.id),
     catalog.listEvents(db, { entityId: device.id }),
-    primarySystem ? compatQueries.loadReferenceHardware(db, primarySystem.slug).then((hw) => (hw ? compatQueries.runCompatibility(db, hw, { contextLength: 8192 }) : [])) : Promise.resolve([]),
+    primarySystem ? compatQueries.loadReferenceHardware(db, primarySystem.slug).then((hw) => (hw ? compatQueries.runCompatibility(db, hw, { contextLength: 8192, ...measurementPolicy() }) : [])) : Promise.resolve([]),
     catalog.listDevices(db),
   ]);
+  // See lib/community-visibility: seeded members never speak for a real product.
+  const hideCommunity = hideSampleCommunityContent();
+  const shownReviews = hideCommunity ? [] : reviews;
+  const shownSubmissions = hideCommunity ? [] : submissions;
+  const shownAggregates = hideCommunity ? [] : aggregates;
   const top = picks.filter((p) => p.recommended && p.recommended.result.placement !== 'hybrid').sort((a, b) => b.paramsTotal - a.paramsTotal);
   const kindLabel = DEVICE_KIND_LABEL[device.deviceKind] ?? humanize(device.deviceKind);
   const usable = device.memoryKind === 'dedicated' && device.memoryGb ? device.memoryGb * compat.COMPAT_CONSTANTS.dedicatedUsableFraction : primarySystem ? systemUsableGb(primarySystem).gb : null;
@@ -97,7 +103,7 @@ export default async function DevicePage({ params }: { params: Params }) {
           </div>
           <div>
             <h2>Owners say <span>{aggregates[0]?.count ?? 0} ratings</span></h2>
-            <div style={{ marginTop: 4 }}><RatingSummary aggregates={aggregates} /></div>
+            <div style={{ marginTop: 4 }}><RatingSummary aggregates={shownAggregates} emptyText={hideCommunity ? SAMPLE_EMPTY_TEXT : undefined} /></div>
           </div>
         </aside>
       </div>
@@ -137,8 +143,8 @@ export default async function DevicePage({ params }: { params: Params }) {
       </EntitySection>
 
       <div className="split">
-        <EntitySection id="community-runs" title="Community results"><SubmissionList submissions={submissions} /></EntitySection>
-        <EntitySection id="reviews" title="Reviews"><ReviewList reviews={reviews} /></EntitySection>
+        <EntitySection id="community-runs" title="Community results"><SubmissionList submissions={shownSubmissions} emptyText={hideCommunity ? SAMPLE_EMPTY_TEXT : undefined} /></EntitySection>
+        <EntitySection id="reviews" title="Reviews"><ReviewList reviews={shownReviews} emptyText={hideCommunity ? SAMPLE_EMPTY_TEXT : undefined} /></EntitySection>
       </div>
 
       <div className="split">
