@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Disclosure, Empty, FitBadge, Speed } from '@/components/ui';
 import { EntityMark, MemoryScale, ParamsReach } from '@/components/viz';
 import { maxParamsAtQ4, systemUsableGb } from '@/lib/hardware';
+import { measurementPolicy } from '@/lib/community-visibility';
 import { CAPABILITY_LABEL, FORM_FACTOR_LABEL, formatBytes, formatContext, formatParams, humanize, numberParam, searchParam } from '@/lib/format';
 import { getViewer } from '@/lib/session';
 
@@ -68,7 +69,7 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
   } else if (mode === 'system' && systemSlug) hardware = await compatQueries.loadReferenceHardware(db, systemSlug);
 
   const results = hardware
-    ? await compatQueries.runCompatibility(db, hardware, { contextLength: ctx, capability, runtimeSlugs: runtime ? [runtime] : undefined, commercialOnly })
+    ? await compatQueries.runCompatibility(db, hardware, { contextLength: ctx, capability, runtimeSlugs: runtime ? [runtime] : undefined, commercialOnly, ...measurementPolicy() })
     : [];
 
   const accel = results.filter((r) => r.recommended?.result.placement === 'accelerator');

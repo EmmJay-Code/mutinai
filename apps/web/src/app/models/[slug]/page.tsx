@@ -8,6 +8,7 @@ import { PerformanceTable, ProvenanceBlock, RatingSummary, ReviewList, Submissio
 import { Basis, Crumbs, DataOrigin, Disclosure, Empty, EntitySection, Facts, FitBadge, Glance, LicenseShort, SectionNav, Speed, Tag } from '@/components/ui';
 import { CapabilityDetail, EntityMark, MemoryScale, SystemsMeter } from '@/components/viz';
 import { CAPABILITY_LABEL, formatBytes, formatContext, formatDate, formatMonthYear, formatNumber, formatParams, humanize, isoDate, paramsInWords, VARIANT_KIND_EXPLAINER } from '@/lib/format';
+import { hideSampleCommunityContent, measurementPolicy, SAMPLE_EMPTY_TEXT } from '@/lib/community-visibility';
 import { getViewer } from '@/lib/session';
 
 type Params = Promise<{ slug: string }>;
@@ -51,7 +52,7 @@ export default async function ModelPage({ params }: { params: Params }) {
     community.listSubmissions(db, { modelId: model.id }, viewer),
     release ? catalog.listEvents(db, { entityId: release.id, limit: 10 }) : Promise.resolve([]),
     Promise.all(model.variants.map((v) => catalog.getProvenance(db, v.id))),
-    compatQueries.compatForModelAcrossSystems(db, model.slug, { contextLength: 8192 }),
+    compatQueries.compatForModelAcrossSystems(db, model.slug, { contextLength: 8192, ...measurementPolicy() }),
     catalog.listModels(db),
     community.ratingAggregates(db, subjectIds),
     catalog.listCapabilityProfiles(db),
@@ -59,6 +60,12 @@ export default async function ModelPage({ params }: { params: Params }) {
     catalog.listBestBenchmarkScores(db),
     ...model.variants.map((v) => community.ratingAggregates(db, [v.id, ...v.artifacts.map((a) => a.id)])),
   ]);
+  // A page about someone else's model never shows seeded member content as opinion or measurement of it.
+  const hideCommunity = hideSampleCommunityContent();
+  const shownReviews = hideCommunity ? [] : reviews;
+  const shownSubmissions = hideCommunity ? [] : submissions;
+  const shownAggregates = hideCommunity ? [] : allAggregates;
+  const variantAggregates = hideCommunity ? aggregates.map(() => []) : aggregates;
   const listItem = list.find((m) => m.slug === model.slug);
   const profile = profiles[model.slug];
   const benchmarkNames = Object.fromEntries(benchmarks.map((b) => [b.slug, b.name]));
@@ -131,8 +138,8 @@ export default async function ModelPage({ params }: { params: Params }) {
             <div style={{ marginTop: 8 }}><CapabilityDetail profile={profile} benchmarkNames={benchmarkNames} /></div>
           </div>
           <div>
-            <h2>Community <span>{plural(listItem?.reviewCount ?? 0, 'review')}</span></h2>
-            <div style={{ marginTop: 4 }}><RatingSummary aggregates={allAggregates.slice(0, 4)} /></div>
+            <h2>Community <span>{plural(hideCommunity ? 0 : listItem?.reviewCount ?? 0, 'review')}</span></h2>
+            <div style={{ marginTop: 4 }}><RatingSummary aggregates={shownAggregates.slice(0, 4)} emptyText={hideCommunity ? SAMPLE_EMPTY_TEXT : undefined} /></div>
           </div>
         </aside>
       </div>
@@ -240,7 +247,7 @@ export default async function ModelPage({ params }: { params: Params }) {
                   ))}
                 </dl>
                 <div>
-                  {aggregates[i] && aggregates[i]!.length > 0 ? <RatingSummary aggregates={aggregates[i]!} /> : <p className="small muted" style={{ margin: 0 }}>No ratings for this variant yet.</p>}
+                  {variantAggregates[i] && variantAggregates[i]!.length > 0 ? <RatingSummary aggregates={variantAggregates[i]!} /> : <p className="small muted" style={{ margin: 0 }}>{hideCommunity ? SAMPLE_EMPTY_TEXT : 'No ratings for this variant yet.'}</p>}
                   <IfContributing><p style={{ marginTop: 8 }}><Link className="btn btn-small" href={`/contribute/review?entity=model_variant:${v.slug}&returnTo=${encodeURIComponent(`/models/${model.slug}#${v.slug}`)}`}>Review this variant</Link></p></IfContributing>
                 </div>
               </div>
@@ -293,10 +300,10 @@ export default async function ModelPage({ params }: { params: Params }) {
 
       <div className="split">
         <EntitySection id="community-runs" title="Community results" more={<IfContributing><Link href={`/contribute/benchmark?model=${model.slug}`}>Submit a run →</Link></IfContributing>}>
-          <SubmissionList submissions={submissions} />
+          <SubmissionList submissions={shownSubmissions} emptyText={hideCommunity ? SAMPLE_EMPTY_TEXT : undefined} />
         </EntitySection>
         <EntitySection id="reviews" title="Reviews">
-          <ReviewList reviews={reviews} showSubject emptyText="No reviews for this model yet." />
+          <ReviewList reviews={shownReviews} showSubject emptyText={hideCommunity ? SAMPLE_EMPTY_TEXT : 'No reviews for this model yet.'} />
         </EntitySection>
       </div>
 

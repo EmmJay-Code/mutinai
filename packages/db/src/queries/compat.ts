@@ -156,7 +156,12 @@ export interface CompatArtifactRow {
   contextLength: number;
 }
 
-export async function loadCompatCatalog(db: Executor) {
+export interface MeasurementOptions {
+  /** Default true. False excludes community submissions, leaving only canonical results. */
+  includeCommunityMeasurements?: boolean;
+}
+
+export async function loadCompatCatalog(db: Executor, opts: MeasurementOptions = {}) {
   const artifacts = await rows<CompatArtifactRow>(db, sql`
     select a.id as "artifactId", ae.slug as "artifactSlug", se.name as "schemeName", a.format, q.bits_per_weight as "bitsPerWeight",
       a.size_bytes::float8 as "sizeBytes", pe.name as "publisherName", v.id as "variantId", ve.slug as "variantSlug", ve.name as "variantName",
@@ -185,14 +190,19 @@ export async function loadCompatCatalog(db: Executor) {
       rt.supports_offload as "supportsOffload", rt.supports_multi_gpu as "supportsMultiGpu"
     from ecosystem.runtime rt join ecosystem.entity pe on pe.id = rt.project_id order by lower(pe.name)`);
 
-  const measurements = await loadMeasurements(db);
+  const measurements = await loadMeasurements(db, opts);
   return { artifacts, runtimes, measurements };
 }
 
-export async function loadMeasurements(db: Executor): Promise<Measurement[]> {
+/**
+ * Measured throughput behind the compatibility engine: canonical results, plus verified member submissions when the
+ * caller says those describe real people. A deployment that accepts no contributions holds only seeded submissions,
+ * and a speed labelled `measured` must never rest on those — see `communityContentIsSample` in the web app.
+ */
+export async function loadMeasurements(db: Executor, opts: MeasurementOptions = {}): Promise<Measurement[]> {
   const gen = sql.join(GEN_KEYS.map((k) => sql`${k}`), sql`, `);
   const prompt = sql.join(PROMPT_KEYS.map((k) => sql`${k}`), sql`, `);
-  return rows<Measurement>(db, sql`
+  const canonical = sql`
     select env.hardware_configuration_id as "hardwareConfigurationId", br.artifact_id as "artifactId", env.runtime_id as "runtimeId",
       env.context_length as "contextLength",
       max(case when bm.key in (${gen}) then br.value end) as "genTps",
@@ -202,7 +212,9 @@ export async function loadMeasurements(db: Executor): Promise<Measurement[]> {
     join ecosystem.run_environment env on env.id = br.environment_id
     join ecosystem.benchmark_metric bm on bm.id = br.metric_id
     where br.artifact_id is not null and env.hardware_configuration_id is not null
-    group by env.id, br.artifact_id
+    group by env.id, br.artifact_id`;
+  if (opts.includeCommunityMeasurements === false) return rows<Measurement>(db, canonical);
+  return rows<Measurement>(db, sql`${canonical}
     union all
     select coalesce(env.hardware_configuration_id, env.user_hardware_config_id), s.artifact_id, env.runtime_id, env.context_length,
       max(case when bm.key in (${gen}) then sm.value end),
@@ -241,7 +253,7 @@ export interface CompatVariantResult {
   artifactsConsidered: number;
 }
 
-export interface RunCompatOptions {
+export interface RunCompatOptions extends MeasurementOptions {
   contextLength: number;
   capability?: string;
   runtimeSlugs?: string[];
@@ -297,7 +309,7 @@ function groupByVariant(rows: CompatArtifactRow[]): CompatArtifactRow[][] {
 }
 
 export async function runCompatibility(db: Executor, hardware: HardwareSelection, opts: RunCompatOptions): Promise<CompatVariantResult[]> {
-  const { artifacts, runtimes, measurements } = await loadCompatCatalog(db);
+  const { artifacts, runtimes, measurements } = await loadCompatCatalog(db, opts);
   const usableRuntimes = opts.runtimeSlugs?.length ? runtimes.filter((r) => opts.runtimeSlugs!.includes(r.slug)) : runtimes;
   const filtered = artifacts.filter(
     (a) => (!opts.capability || a.capabilities.includes(opts.capability)) && (!opts.commercialOnly || a.commercialUse === 'allowed'),
@@ -328,8 +340,8 @@ export interface ModelCompatSummary {
 }
 
 /** For every model, how many reference systems run it well, slowly, or not at all. One catalog load for all models. */
-export async function compatSummaryByModel(db: Executor, opts: { contextLength: number }): Promise<Record<string, ModelCompatSummary>> {
-  const { artifacts, runtimes, measurements } = await loadCompatCatalog(db);
+export async function compatSummaryByModel(db: Executor, opts: MeasurementOptions & { contextLength: number }): Promise<Record<string, ModelCompatSummary>> {
+  const { artifacts, runtimes, measurements } = await loadCompatCatalog(db, opts);
   const systems = await rows<{ slug: string }>(db, sql`
     select ce.slug from ecosystem.hardware_configuration hc join ecosystem.entity ce on ce.id = hc.id`);
   const hardware = (await Promise.all(systems.map((s) => loadReferenceHardware(db, s.slug)))).filter((h): h is HardwareSelection => h != null);
@@ -352,8 +364,8 @@ export async function compatSummaryByModel(db: Executor, opts: { contextLength: 
   return out;
 }
 
-export async function compatForModelAcrossSystems(db: Executor, modelSlug: string, opts: { contextLength: number }): Promise<ModelSystemCompat[]> {
-  const { artifacts, runtimes, measurements } = await loadCompatCatalog(db);
+export async function compatForModelAcrossSystems(db: Executor, modelSlug: string, opts: MeasurementOptions & { contextLength: number }): Promise<ModelSystemCompat[]> {
+  const { artifacts, runtimes, measurements } = await loadCompatCatalog(db, opts);
   const groups = groupByVariant(artifacts.filter((a) => a.modelSlug === modelSlug));
   if (!groups.length) return [];
   const systems = await rows<{ slug: string; name: string; formFactor: string }>(db, sql`

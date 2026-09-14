@@ -21,6 +21,7 @@ import { PathIcon } from '@/components/icons';
 import { Basis, EntityLink, Explain, FitBadge, LicenseShort, Placeholder, Speed } from '@/components/ui';
 import { Avatar, CapabilityBars, EntityMark, FrontierChart, Heat, MemoryScale, MonthlyBars, SystemsMeter } from '@/components/viz';
 import { entityTypeOfEvent, EVENT_GROUPS } from '@/lib/events';
+import { measurementPolicy } from '@/lib/community-visibility';
 import { entityHref, FORM_FACTOR_LABEL, formatDate, formatNumber, formatParams, humanize, isoDate } from '@/lib/format';
 import { bestDevicePrice, maxParamsAtQ4, roughParams } from '@/lib/hardware';
 import { communityContentIsSample } from '@/lib/session';
@@ -74,7 +75,7 @@ export default async function DiscoverPage() {
     community.listSubmissions(db, {}, undefined, 40),
     community.listRecentReviews(db, undefined, 10),
     catalog.listCapabilityProfiles(db),
-    compatQueries.compatSummaryByModel(db, { contextLength: 8192 }),
+    compatQueries.compatSummaryByModel(db, { contextLength: 8192, ...measurementPolicy() }),
     catalog.listProjects(db, { category: 'runtime' }),
     catalog.listDevices(db, { sort: 'memory' }),
     catalog.getCatalogCounts(db),
@@ -82,7 +83,7 @@ export default async function DiscoverPage() {
     catalog.listLatestDevicePrices(db),
   ]);
   const previewHardware = await compatQueries.loadReferenceHardware(db, PREVIEW_SYSTEM);
-  const preview = previewHardware ? await compatQueries.runCompatibility(db, previewHardware, { contextLength: 8192 }) : [];
+  const preview = previewHardware ? await compatQueries.runCompatibility(db, previewHardware, { contextLength: 8192, ...measurementPolicy() }) : [];
   const picks = preview
     .filter((r) => r.recommended && r.recommended.result.placement === 'accelerator' && r.variantKind !== 'fine_tune')
     .sort((a, b) => b.paramsTotal - a.paramsTotal)

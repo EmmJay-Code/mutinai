@@ -52,8 +52,8 @@ export function PerformanceTable({ results, showModel = false, showSystem = true
   );
 }
 
-export function RatingSummary({ aggregates }: { aggregates: RatingAggregate[] }) {
-  if (!aggregates.length) return <p className="muted small">No public ratings yet.</p>;
+export function RatingSummary({ aggregates, emptyText = 'No public ratings yet.' }: { aggregates: RatingAggregate[]; emptyText?: string }) {
+  if (!aggregates.length) return <p className="muted small">{emptyText}</p>;
   return (
     <div className="ratings" role="table" aria-label="Community ratings by dimension">
       {aggregates.map((a) => {

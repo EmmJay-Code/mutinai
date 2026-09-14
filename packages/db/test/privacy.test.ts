@@ -132,6 +132,16 @@ describe('public surfaces never expose private data', () => {
     expect(measurements.some((m) => m.genTps === 21.8)).toBe(false);
     expect(measurements.some((m) => m.genTps === 910)).toBe(false);
   });
+
+  it('community submissions can be excluded entirely, leaving only canonical results', async () => {
+    const withCommunity = await compatQueries.loadMeasurements(h.db);
+    expect(withCommunity.some((m) => m.origin === 'community_verified'), 'the fixture set has verified runs to exclude').toBe(true);
+    const canonicalOnly = await compatQueries.loadMeasurements(h.db, { includeCommunityMeasurements: false });
+    expect(canonicalOnly.every((m) => m.origin === 'canonical')).toBe(true);
+    expect(canonicalOnly.length).toBeLessThan(withCommunity.length);
+    // Canonical results are untouched: excluding members removes rows, never changes the ones that remain.
+    expect(canonicalOnly).toEqual(withCommunity.filter((m) => m.origin === 'canonical'));
+  });
 });
 
 describe('write authorization', () => {

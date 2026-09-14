@@ -7,6 +7,7 @@ import { InfoModeToggle } from '@/components/info-mode';
 import { Empty, LicenseShort } from '@/components/ui';
 import { CapabilityBars, Heat, MemoryScale, SystemsMeter } from '@/components/viz';
 import { CAPABILITY_LABEL, formatContext, formatMonthYear, formatParams, humanize, numberParam, searchParam } from '@/lib/format';
+import { measurementPolicy } from '@/lib/community-visibility';
 import { getInfoMode } from '@/lib/info-mode';
 
 export const metadata: Metadata = { title: 'Models' };
@@ -41,7 +42,7 @@ export default async function ModelsPage({ searchParams }: { searchParams: SP })
     catalog.listModels(db),
     catalog.listModelFacets(db),
     catalog.listCapabilityProfiles(db),
-    compatQueries.compatSummaryByModel(db, { contextLength: 8192 }),
+    compatQueries.compatSummaryByModel(db, { contextLength: 8192, ...measurementPolicy() }),
     getInfoMode(),
   ]);
   const ctx = (m: Model) => ({ profile: profiles[m.slug], reach: summary[m.slug] });

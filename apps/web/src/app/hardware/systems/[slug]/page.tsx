@@ -7,6 +7,7 @@ import { PerformanceTable, RatingSummary, ReviewList, SubmissionList } from '@/c
 import { Crumbs, Empty, EntitySection, FitBadge, Glance, SectionNav, Speed } from '@/components/ui';
 import { EntityMark, MemoryScale, ParamsReach, SystemsMeter } from '@/components/viz';
 import { formatGb, formatParams, humanize } from '@/lib/format';
+import { hideSampleCommunityContent, measurementPolicy, SAMPLE_EMPTY_TEXT } from '@/lib/community-visibility';
 import { maxParamsAtQ4, systemSentence, systemUsableGb } from '@/lib/hardware';
 import { getViewer } from '@/lib/session';
 
@@ -36,8 +37,13 @@ export default async function SystemPage({ params }: { params: Params }) {
     community.listReviewsForEntities(db, [system.id], viewer),
     community.ratingAggregates(db, [system.id]),
     community.listSubmissions(db, { configurationId: system.id }, viewer),
-    hw ? compatQueries.runCompatibility(db, hw, { contextLength: 8192 }) : Promise.resolve([]),
+    hw ? compatQueries.runCompatibility(db, hw, { contextLength: 8192, ...measurementPolicy() }) : Promise.resolve([]),
   ]);
+  // See lib/community-visibility: seeded members never speak for a real product.
+  const hideCommunity = hideSampleCommunityContent();
+  const shownReviews = hideCommunity ? [] : reviews;
+  const shownSubmissions = hideCommunity ? [] : submissions;
+  const shownAggregates = hideCommunity ? [] : aggregates;
   const top = results.filter((p) => p.recommended && p.recommended.result.placement !== 'hybrid').sort((a, b) => b.paramsTotal - a.paramsTotal);
   const well = results.filter((r) => r.recommended?.result.placement === 'accelerator' || r.recommended?.result.placement === 'cpu').length;
   const slow = results.filter((r) => r.recommended?.result.placement === 'hybrid').length;
@@ -76,7 +82,7 @@ export default async function SystemPage({ params }: { params: Params }) {
           </div>
           <div>
             <h2>Owners say</h2>
-            <div style={{ marginTop: 4 }}><RatingSummary aggregates={aggregates} /></div>
+            <div style={{ marginTop: 4 }}><RatingSummary aggregates={shownAggregates} emptyText={hideCommunity ? SAMPLE_EMPTY_TEXT : undefined} /></div>
           </div>
         </aside>
       </div>
@@ -117,8 +123,8 @@ export default async function SystemPage({ params }: { params: Params }) {
       </EntitySection>
 
       <div className="split">
-        <EntitySection id="community-runs" title="Community results"><SubmissionList submissions={submissions} /></EntitySection>
-        <EntitySection id="reviews" title="Reviews"><ReviewList reviews={reviews} /></EntitySection>
+        <EntitySection id="community-runs" title="Community results"><SubmissionList submissions={shownSubmissions} emptyText={hideCommunity ? SAMPLE_EMPTY_TEXT : undefined} /></EntitySection>
+        <EntitySection id="reviews" title="Reviews"><ReviewList reviews={shownReviews} emptyText={hideCommunity ? SAMPLE_EMPTY_TEXT : undefined} /></EntitySection>
       </div>
     </>
   );
