@@ -149,7 +149,8 @@ Not needed before the first independent source, but it will be needed the first 
 ## Sequencing
 
 1. This ADR and [benchmarks.md](../benchmarks.md) — done, no code.
-2. Choose independent sources against the layer 2 licence gate. In progress, outside this ADR.
+2. Choose independent sources against the layer 2 licence gate. Four candidates researched — see the update at the
+   end of this document and [benchmark-sources.md](../benchmark-sources.md). Awaiting a licence answer from LiveBench.
 3. One migration covering G1, G3, G4, G5, G6 and G9, written against the chosen sources so the columns match what
    those sources actually publish rather than what they might.
 4. G2 and G8 in the same change as the first independent adapter, because that is the change that makes them wrong.
@@ -164,3 +165,41 @@ Not needed before the first independent source, but it will be needed the first 
 - Until step 3 lands, capability results keep their free-text evaluation setting, which means "same settings" cannot
   be checked programmatically and side-by-side comparison stays a display of separately-attributed numbers rather
   than a like-for-like ranking. That is the correct behaviour for the data currently held.
+
+## Update, 17 September 2026: candidate sources researched
+
+Step 2 of the sequencing is done for four candidates — LiveBench, SWE-bench, Aider Polyglot and BFCL. The full
+findings are in [benchmark-sources.md](../benchmark-sources.md). What they change here:
+
+**Decision 1 gains a distinction.** A leaderboard that hosts runs each team performed on its own scaffold is a
+registry of self-reported results, not independent measurement. SWE-bench's leaderboard is one: entries are third-party
+submissions of the submitter's own agent runs. Such numbers are layer 1 evidence displayed by a third party, and the
+`origin` recorded is `developer_reported`, attributed to whoever ran them. The test is who ran the evaluation, not who
+publishes the table.
+
+**G5 was mis-prioritised.** None of the four publishes score standard error. Three publish an exact numerator and
+denominator (Aider `pass_num`/`test_cases`, SWE-bench `len(resolved)`/split size, LiveBench `nq_<subtask>` in its cost
+file). `sample_numerator` and `sample_count` come first; `stderr` stays in the migration but will be null almost
+everywhere until an lm-evaluation-harness source is added.
+
+**G11 — a benchmark has three levels, not two. Migration required.** The schema is `benchmark → benchmark_metric`.
+Every source researched publishes *subtask* scores under a named benchmark (LiveBench: 7 categories over 22 subtasks;
+BFCL: ~30 category columns; SWE-bench: splits) and computes the headline average at display time — LiveBench states
+outright that overall and per-category averages "are never stored in the CSV". Mutinai should store subtask scores and
+compute the roll-up. A `task` column on `benchmark_result` is the minimum.
+
+**G12 — the subject is often a model *as configured*.** `claude-opus-4-5-…-thinking-64k-high-effort` and
+`meta-llama/Llama-3.1-8B-Instruct-FC` are not distinct weights. Creating a `model_variant` per leaderboard row would
+fabricate models that do not exist, so reasoning effort, function-calling mode and edit format belong in the
+`evaluation_config` table proposed under G4, with the result still pointing at the real variant.
+
+**G4 is confirmed and can now be specified.** The configuration fields the real sources publish are: harness name,
+harness version, mode, reasoning effort, attempts, and the verbatim invocation. `shots` is still needed but no source
+researched so far reports it.
+
+**G3 is confirmed as load-bearing, not theoretical.** Two of the four candidates have no licence on their published
+results. Without `redistribution_allowed` on the source, nothing in the code would stop a future adapter ingesting
+them.
+
+The recommended first source is LiveBench, held until its score tables' licence is confirmed in writing; BFCL is the
+fallback and the only one whose licence explicitly names the leaderboard statistics. Neither is implemented.

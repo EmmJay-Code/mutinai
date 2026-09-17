@@ -36,6 +36,11 @@ by" column is second-hand — follow it to the developer's page, or do not inges
 An independent result is one produced by a project that is not the model's developer and not Mutinai. It is the most
 useful layer, because it is the only one that puts different models through the same harness at the same settings.
 
+Note what that excludes. A leaderboard that *hosts* runs each vendor or team performed on their own scaffold is a
+registry of self-reported results, not an independent measurement, however reputable the registry. Those numbers are
+layer 1 evidence displayed by a third party, and if they are ever ingested it is as developer-reported, attributed to
+whoever ran them. The test is who ran the evaluation, not who publishes the table.
+
 Two conditions before any independent source is ingested:
 
 - **Reuse must actually be permitted.** The licence or terms must allow redistributing the numbers, with whatever
@@ -47,6 +52,9 @@ The permission and the attribution text are recorded against the source, so the 
 instead of living in someone's memory.
 
 Sources known to fall outside this layer today are listed under [Proprietary](#5-proprietary), with why.
+
+Four candidates — LiveBench, SWE-bench, Aider Polyglot and BFCL — have been researched against this gate. The
+findings, including which of them clear it, are in [benchmark-sources.md](./benchmark-sources.md).
 
 ### 3. Community
 
@@ -121,9 +129,12 @@ never averaged together.
 
 ## What is not decided yet
 
-- **Which independent sources.** Under research. The gate is the licence check in layer 2, applied before any adapter
-  is written.
+- **Which independent sources.** Four candidates researched; see
+  [benchmark-sources.md](./benchmark-sources.md). LiveBench is the recommended first source, blocked on one licensing
+  confirmation; BFCL is the fallback. SWE-bench's leaderboard results carry no licence and are link-only.
 - **Normalisation across harnesses.** Whether two independent sources running "MMLU" at different few-shot counts are
-  shown as one benchmark with two settings, or two benchmarks. Currently they would be one benchmark with two settings
+  shown as one benchmark with two settings, or two benchmarks. Related and now evidenced: every source researched so
+  far publishes *subtask* scores under a named benchmark, and computes the headline average at display time. Mutinai
+  should store the subtasks and compute the roll-up, never ingest someone else's average as a fact. Currently they would be one benchmark with two settings
   recorded in free text, which is not good enough — see ADR-0010's gap list.
 - **What makes a community submission verified.** Open decision 6 in [architecture.md](./architecture.md).

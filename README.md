@@ -75,7 +75,8 @@ with a review queue for anything that cannot be placed safely. See [docs/live-in
 ## Benchmarks
 
 Benchmark numbers are layered by who measured them, ingested only where redistribution is permitted, and never
-merged into a single score. See [docs/benchmarks.md](docs/benchmarks.md).
+merged into a single score. See [docs/benchmarks.md](docs/benchmarks.md) for the policy and
+[docs/benchmark-sources.md](docs/benchmark-sources.md) for the research on candidate independent sources.
 
 ## Deployment
 
