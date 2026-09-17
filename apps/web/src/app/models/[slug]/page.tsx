@@ -57,7 +57,7 @@ export default async function ModelPage({ params }: { params: Params }) {
     community.ratingAggregates(db, subjectIds),
     catalog.listCapabilityProfiles(db),
     catalog.listBenchmarks(db, 'capability'),
-    catalog.listBestBenchmarkScores(db),
+    catalog.listBenchmarkScores(db),
     ...model.variants.map((v) => community.ratingAggregates(db, [v.id, ...v.artifacts.map((a) => a.id)])),
   ]);
   // A page about someone else's model never shows seeded member content as opinion or measurement of it.
@@ -79,8 +79,14 @@ export default async function ModelPage({ params }: { params: Params }) {
 
   const spec = { paramsTotal: model.paramsTotal, paramsActive: model.paramsActive, layers: model.layers, kvHeads: model.kvHeads, headDim: model.headDim, kvBytesPerTokenOverride: model.kvBytesPerTokenOverride, contextLength: model.contextLength };
   const kvPer8k = compat.kvCacheGb(spec, Math.min(8192, model.contextLength));
-  const benchSlugs = [...new Set(model.capabilityResults.map((r) => r.benchmarkSlug))];
-  const variantsWithResults = model.variants.filter((v) => model.capabilityResults.some((r) => r.variantSlug === v.slug));
+  // One cell per variant and benchmark, read from the headline view: a benchmark that stores per-task facts
+  // (LiveBench) contributes its computed average here, not twenty-three separate rows.
+  const benchSlugs = [...new Set(model.capabilityHeadlines.map((r) => r.benchmarkSlug))];
+  const variantsWithResults = model.variants.filter((v) => model.capabilityHeadlines.some((r) => r.variantSlug === v.slug));
+  const benchmarkOrigins = [...new Set(model.capabilityHeadlines.map((r) => r.origin))];
+  const benchmarkCredits = [...new Set(model.capabilityHeadlines.map((r) => r.attribution).filter((a): a is string => Boolean(a)))];
+  // Disagreeing reports are kept, not overwritten; the table shows the preferred one and says how many it stands in for.
+  const conflictingResults = model.capabilityResults.reduce((n, r) => n + r.conflictingCount, 0);
   const usable = model.variants.filter((v) => v.kind !== 'base');
   const licenses = [...new Map(model.variants.flatMap((v) => (v.license ? [[v.license.name, v.license] as const] : []))).values()];
   const commercial = licenses.some((l) => l.commercialUse === 'allowed') ? 'allowed' : licenses[0]?.commercialUse;
@@ -199,19 +205,26 @@ export default async function ModelPage({ params }: { params: Params }) {
               </thead>
               <tbody>
                 {benchSlugs.map((b) => {
-                  const rows = model.capabilityResults.filter((r) => r.benchmarkSlug === b);
+                  const rows = model.capabilityHeadlines.filter((r) => r.benchmarkSlug === b);
                   const top = bestOf(b);
                   return (
                     <tr key={b}>
-                      <td><EntityMark type="bench" /> <span className="primary">{rows[0]!.benchmarkName}</span><span className="sub">{rows[0]!.metric.label}</span></td>
+                      <td><EntityMark type="bench" /> <span className="primary">{rows[0]!.benchmarkName}</span><span className="sub">{rows[0]!.metricLabel}</span></td>
                       {variantsWithResults.map((v) => {
                         const r = rows.find((x) => x.variantSlug === v.slug);
+                        const detail = r && [
+                          humanize(r.origin),
+                          r.resultSource ?? 'unknown source',
+                          r.evaluationSetting,
+                          r.samples ? `${r.samples.numerator} of ${r.samples.count} cases` : null,
+                          r.computed ? `average of ${r.subtaskCount ?? 0} tasks, computed here` : null,
+                        ].filter(Boolean).join(' · ');
                         return (
                           <td key={v.slug}>
                             {r ? (
                               <div style={{ display: 'grid', gridTemplateColumns: '48px minmax(50px, 120px)', gap: 8, alignItems: 'center' }}>
-                                <span><span className="val-measured">{r.metric.value.toFixed(1)}</span><a className="source-mark" href="#sources" title={`${humanize(r.origin)} · ${r.sourceName ?? 'unknown source'}${r.evaluationSetting ? ` · ${r.evaluationSetting}` : ''}`}>src</a></span>
-                                <span className="bar"><i style={{ width: `${(r.metric.value / top) * 100}%`, background: 'var(--e-bench)' }} /></span>
+                                <span><span className="val-measured">{r.value.toFixed(1)}</span><a className="source-mark" href="#sources" title={detail}>src</a></span>
+                                <span className="bar"><i style={{ width: `${top > 0 ? (r.value / top) * 100 : 0}%`, background: 'var(--e-bench)' }} /></span>
                               </div>
                             ) : <span className="faint">—</span>}
                           </td>
@@ -222,7 +235,15 @@ export default async function ModelPage({ params }: { params: Params }) {
                 })}
               </tbody>
             </table>
-            <p className="small muted" style={{ marginTop: 6 }}><Basis kind="source">developer-reported · illustrative</Basis></p>
+            <p className="small muted" style={{ marginTop: 6 }}>
+              <Basis kind="source">{benchmarkOrigins.map(humanize).join(' · ')}</Basis>
+              {benchmarkCredits.length > 0 && <span style={{ marginLeft: 8 }}>{benchmarkCredits.join(' · ')}</span>}
+              {conflictingResults > 0 && (
+                <span style={{ marginLeft: 8 }}>
+                  {conflictingResults} further {conflictingResults === 1 ? 'report disagrees' : 'reports disagree'} with what is shown and {conflictingResults === 1 ? 'is' : 'are'} kept on record.
+                </span>
+              )}
+            </p>
           </div>
         )}
       </EntitySection>

@@ -173,8 +173,9 @@ export async function listModels(db: Executor, f: ModelListFilters = {}): Promis
       (select coalesce(jsonb_agg(distinct jsonb_build_object('name', l.name, 'commercialUse', l.commercial_use)), '[]')
         from ecosystem.model_variant v join ecosystem.license l on l.id = v.license_id where v.model_id = m.id) as licenses,
       (select count(*)::int from ecosystem.benchmark_result br
-        left join ecosystem.model_artifact a on a.id = br.artifact_id
-        join ecosystem.model_variant v on v.id = coalesce(br.variant_id, a.variant_id) where v.model_id = m.id) as "resultCount",
+        join ecosystem.benchmark_run run on run.id = br.run_id
+        left join ecosystem.model_artifact a on a.id = run.artifact_id
+        join ecosystem.model_variant v on v.id = coalesce(run.variant_id, a.variant_id) where v.model_id = m.id) as "resultCount",
       (select count(*)::int from community.review rv
         left join ecosystem.model_artifact a on a.id = rv.entity_id
         join ecosystem.model_variant v on v.id = coalesce(a.variant_id, rv.entity_id)
@@ -247,10 +248,38 @@ export interface CapabilityResultDTO {
   benchmarkSlug: string;
   benchmarkName: string;
   metric: MetricValue;
+  /** Null for a number that covers the whole benchmark. */
+  subtask: { key: string; label: string } | null;
+  /** How the subject was run, in words derived from the structured configuration. */
   evaluationSetting: string | null;
+  /** What the value is a fraction of, when the source publishes counts. */
+  samples: { numerator: number; count: number } | null;
   origin: string;
+  resultSource: string | null;
+  attribution: string | null;
   sourceName: string | null;
   sourceKind: string | null;
+  citationUrl: string | null;
+  /** How many other reports of the same measurement were kept but not shown. */
+  conflictingCount: number;
+}
+
+/** One number per variant and benchmark: what a table with one cell per benchmark should show. */
+export interface CapabilityHeadlineDTO {
+  variantSlug: string;
+  benchmarkSlug: string;
+  benchmarkName: string;
+  metricLabel: string;
+  unit: string;
+  value: number;
+  /** True when the value was computed from the run's subtask results rather than read whole. */
+  computed: boolean;
+  subtaskCount: number | null;
+  evaluationSetting: string | null;
+  samples: { numerator: number; count: number } | null;
+  origin: string;
+  resultSource: string | null;
+  attribution: string | null;
   citationUrl: string | null;
 }
 
@@ -289,12 +318,14 @@ export interface ModelDetailDTO {
   developer: { slug: string; name: string };
   siblings: { slug: string; name: string; paramsTotal: number }[];
   variants: VariantDTO[];
+  /** Every stored fact, subtask rows included: the evidence behind the headlines. */
   capabilityResults: CapabilityResultDTO[];
+  capabilityHeadlines: CapabilityHeadlineDTO[];
   performanceResults: PerformanceResultDTO[];
 }
 
 export async function getModelDetail(db: Executor, slug: string): Promise<ModelDetailDTO | null> {
-  const base = await one<Omit<ModelDetailDTO, 'siblings' | 'variants' | 'capabilityResults' | 'performanceResults'> & { releaseId: string }>(db, sql`
+  const base = await one<Omit<ModelDetailDTO, 'siblings' | 'variants' | 'capabilityResults' | 'capabilityHeadlines' | 'performanceResults'> & { releaseId: string }>(db, sql`
     select m.id, me.slug, me.name, me.summary, m.architecture, m.params_total::float8 as "paramsTotal", m.params_active::float8 as "paramsActive",
       m.layers, m.attention_heads as "attentionHeads", m.kv_heads as "kvHeads", m.head_dim as "headDim",
       m.kv_bytes_per_token_override as "kvBytesPerTokenOverride", m.context_length as "contextLength", r.id as "releaseId",
@@ -353,17 +384,46 @@ export async function getModelDetail(db: Executor, slug: string): Promise<ModelD
     where v.model_id = ${base.id}
     order by q.bits_per_weight desc, pe.slug`);
 
+  // Reads the preferred report of each measurement. Conflicting reports stay in the tables and are counted here,
+  // never silently resolved by taking whichever number is highest.
   const capabilityResults = await rows<CapabilityResultDTO>(db, sql`
     select ve.slug as "variantSlug", be.slug as "benchmarkSlug", be.name as "benchmarkName",
-      jsonb_build_object('key', bm.key, 'label', bm.label, 'unit', bm.unit, 'higherIsBetter', bm.higher_is_better, 'value', br.value) as metric,
-      br.evaluation_setting as "evaluationSetting", br.origin, src.name as "sourceName", src.kind as "sourceKind", br.citation_url as "citationUrl"
-    from ecosystem.benchmark_result br
-    join ecosystem.model_variant v on v.id = br.variant_id
+      jsonb_build_object('key', bm.key, 'label', bm.label, 'unit', bm.unit, 'higherIsBetter', bm.higher_is_better, 'value', c.value) as metric,
+      case when st.id is null then null else jsonb_build_object('key', st.key, 'label', st.label) end as subtask,
+      cfg.label as "evaluationSetting",
+      case when c.sample_count is null then null else jsonb_build_object('numerator', c.sample_numerator, 'count', c.sample_count) end as samples,
+      c.origin, rs.name as "resultSource", rs.attribution, src.name as "sourceName", src.kind as "sourceKind",
+      run.citation_url as "citationUrl", c.conflicting_count as "conflictingCount"
+    from ecosystem.benchmark_result_canonical c
+    join ecosystem.benchmark_run run on run.id = c.run_id
+    join ecosystem.model_variant v on v.id = c.variant_id
     join ecosystem.entity ve on ve.id = v.id
-    join ecosystem.entity be on be.id = br.benchmark_id
-    join ecosystem.benchmark_metric bm on bm.id = br.metric_id
-    left join ingest.source_record sr on sr.id = br.source_record_id
+    join ecosystem.entity be on be.id = c.benchmark_id
+    join ecosystem.benchmark_metric bm on bm.id = c.metric_id
+    join ecosystem.evaluation_config cfg on cfg.id = c.config_id
+    join ecosystem.result_source rs on rs.id = c.result_source_id
+    left join ecosystem.benchmark_subtask st on st.id = c.subtask_id
+    left join ingest.source_record sr on sr.id = run.source_record_id
     left join ingest.source src on src.id = sr.source_id
+    where v.model_id = ${base.id}
+    order by be.name, ve.name, st.position nulls first, bm.key`);
+
+  const capabilityHeadlines = await rows<CapabilityHeadlineDTO>(db, sql`
+    select ve.slug as "variantSlug", be.slug as "benchmarkSlug", be.name as "benchmarkName",
+      bm.label as "metricLabel", bm.unit, h.value::float8 as value, h.computed,
+      ro.subtask_count as "subtaskCount", cfg.label as "evaluationSetting",
+      case when h.sample_count is null then null else jsonb_build_object('numerator', h.sample_numerator, 'count', h.sample_count) end as samples,
+      h.origin, rs.name as "resultSource", rs.attribution, run.citation_url as "citationUrl"
+    from ecosystem.benchmark_headline_result h
+    join ecosystem.benchmark b on b.id = h.benchmark_id and b.benchmark_kind = 'capability'
+    join ecosystem.entity be on be.id = b.id
+    join ecosystem.benchmark_metric bm on bm.id = h.metric_id
+    join ecosystem.model_variant v on v.id = h.variant_id
+    join ecosystem.entity ve on ve.id = v.id
+    join ecosystem.benchmark_run run on run.id = h.run_id
+    join ecosystem.evaluation_config cfg on cfg.id = h.config_id
+    join ecosystem.result_source rs on rs.id = h.result_source_id
+    left join ecosystem.benchmark_run_rollup ro on ro.run_id = h.run_id and ro.metric_id = h.metric_id
     where v.model_id = ${base.id}
     order by be.name, ve.name`);
 
@@ -374,6 +434,7 @@ export async function getModelDetail(db: Executor, slug: string): Promise<ModelD
     siblings,
     variants: variants.map((v) => ({ ...v, artifacts: artifacts.filter((a) => a.variantId === v.id) })),
     capabilityResults,
+    capabilityHeadlines,
     performanceResults,
   };
 }
@@ -384,11 +445,12 @@ async function listPerformanceResults(db: Executor, filter: SQL): Promise<Perfor
       jsonb_build_object('slug', ce.slug, 'name', ce.name) as configuration,
       jsonb_build_object('slug', rte.slug, 'name', rte.name) as runtime,
       env.runtime_version as "runtimeVersion", env.backend, env.context_length as "contextLength",
-      min(be.name) as "benchmarkName", min(br.origin::text) as origin, min(src.name) as "sourceName",
+      min(be.name) as "benchmarkName", min(run.origin::text) as origin, min(src.name) as "sourceName",
       jsonb_agg(jsonb_build_object('key', bm.key, 'label', bm.label, 'unit', bm.unit, 'higherIsBetter', bm.higher_is_better, 'value', br.value) order by bm.key) as metrics
     from ecosystem.benchmark_result br
-    join ecosystem.run_environment env on env.id = br.environment_id
-    join ecosystem.model_artifact a on a.id = br.artifact_id
+    join ecosystem.benchmark_run run on run.id = br.run_id
+    join ecosystem.run_environment env on env.id = run.environment_id
+    join ecosystem.model_artifact a on a.id = run.artifact_id
     join ecosystem.entity ae on ae.id = a.id
     join ecosystem.model_variant v on v.id = a.variant_id
     join ecosystem.entity me on me.id = v.model_id
@@ -396,7 +458,7 @@ async function listPerformanceResults(db: Executor, filter: SQL): Promise<Perfor
     join ecosystem.entity rte on rte.id = env.runtime_id
     join ecosystem.entity be on be.id = br.benchmark_id
     join ecosystem.benchmark_metric bm on bm.id = br.metric_id
-    left join ingest.source_record sr on sr.id = br.source_record_id
+    left join ingest.source_record sr on sr.id = run.source_record_id
     left join ingest.source src on src.id = sr.source_id
     where ${filter}
     group by env.id, ae.slug, ae.name, me.slug, ce.slug, ce.name, rte.slug, rte.name
@@ -445,7 +507,7 @@ const deviceSelect = sql`
     (select count(*)::int from ecosystem.hardware_configuration_component c where c.device_id = d.id) as "configurationCount",
     (select count(distinct br.id)::int from ecosystem.hardware_configuration_component c
       join ecosystem.run_environment env on env.hardware_configuration_id = c.configuration_id
-      join ecosystem.benchmark_result br on br.environment_id = env.id where c.device_id = d.id) as "resultCount"
+      join ecosystem.benchmark_run br on br.environment_id = env.id where c.device_id = d.id) as "resultCount"
   from ecosystem.hardware_device d
   join ecosystem.entity de on de.id = d.id
   join ecosystem.entity ve on ve.id = d.vendor_org_id`;
@@ -492,7 +554,7 @@ const configurationSelect = sql`
     (select jsonb_agg(jsonb_build_object('slug', de.slug, 'name', de.name, 'count', c.count, 'deviceKind', d.device_kind, 'memoryKind', d.memory_kind, 'memoryGb', d.memory_gb) order by d.memory_kind, de.name)
       from ecosystem.hardware_configuration_component c join ecosystem.hardware_device d on d.id = c.device_id join ecosystem.entity de on de.id = d.id
       where c.configuration_id = hc.id) as components,
-    (select count(*)::int from ecosystem.run_environment env join ecosystem.benchmark_result br on br.environment_id = env.id where env.hardware_configuration_id = hc.id) as "resultCount"
+    (select count(*)::int from ecosystem.run_environment env join ecosystem.benchmark_run br on br.environment_id = env.id where env.hardware_configuration_id = hc.id) as "resultCount"
   from ecosystem.hardware_configuration hc
   join ecosystem.entity ce on ce.id = hc.id`;
 
@@ -563,7 +625,7 @@ const projectSelect = sql`
     case when l.id is null then null else jsonb_build_object('name', l.name, 'commercialUse', l.commercial_use, 'osiApproved', l.osi_approved) end as license,
     case when rt.project_id is null then null else jsonb_build_object('formats', rt.formats, 'backends', rt.backends, 'supportsOffload', rt.supports_offload,
       'supportsMultiGpu', rt.supports_multi_gpu, 'openaiCompatibleApi', rt.openai_compatible_api) end as runtime,
-    (select count(*)::int from ecosystem.run_environment env join ecosystem.benchmark_result br on br.environment_id = env.id where env.runtime_id = p.id) as "resultCount"
+    (select count(*)::int from ecosystem.run_environment env join ecosystem.benchmark_run br on br.environment_id = env.id where env.runtime_id = p.id) as "resultCount"
   from ecosystem.project p
   join ecosystem.entity pe on pe.id = p.id
   left join ecosystem.entity me on me.id = p.maintainer_org_id
@@ -650,7 +712,7 @@ export async function getProvenance(db: Executor, entityId: string): Promise<Pro
   const sources = await rows<ProvenanceDTO['sources'][number]>(db, sql`
     with records as (
       select source_record_id as id from ingest.field_assertion where entity_id = ${entityId}
-      union select source_record_id from ecosystem.benchmark_result br
+      union select source_record_id from ecosystem.benchmark_run br
         left join ecosystem.model_artifact a on a.id = br.artifact_id
         where br.variant_id = ${entityId} or br.artifact_id = ${entityId} or a.variant_id = ${entityId}
       union select source_record_id from ecosystem.entity_relation where subject_id = ${entityId} or object_id = ${entityId}
@@ -705,33 +767,48 @@ export async function listBenchmarks(db: Executor, kind?: 'capability' | 'perfor
 
 // ─── Visual summaries ────────────────────────────────────────────────────────
 
-export interface BestScoreDTO {
+export interface BenchmarkScoreDTO {
   modelSlug: string;
   modelName: string;
+  variantSlug: string;
   benchmarkSlug: string;
   benchmarkName: string;
   value: number;
+  origin: string;
+  /** True when the value was computed from the run's subtask results rather than read whole. */
+  computed: boolean;
   releasedOn: string | null;
 }
 
-/** Best capability-benchmark result per model (across its variants). */
-export async function listBestBenchmarkScores(db: Executor): Promise<BestScoreDTO[]> {
-  return rows<BestScoreDTO>(db, sql`
-    select me.slug as "modelSlug", me.name as "modelName", be.slug as "benchmarkSlug", be.name as "benchmarkName",
-      max(br.value)::float8 as value, max(r.released_on)::text as "releasedOn"
-    from ecosystem.benchmark_result br
-    join ecosystem.benchmark b on b.id = br.benchmark_id and b.benchmark_kind = 'capability'
+/**
+ * One headline score per model and capability benchmark.
+ *
+ * It used to be `max(value)` grouped by model and benchmark, which mixed a benchmark's metrics together, mixed
+ * evaluation configurations together, and — when two sources disagreed — always returned the flattering number.
+ * Selection now happens in `benchmark_headline_result` by declared precedence: the benchmark's headline metric
+ * and configuration, then origin (an independent run over a developer's own claim), then source priority, then
+ * recency. Where a model has several variants, the one whose headline score is reported here is the highest, which
+ * is a statement about the model's best variant rather than about which report to believe.
+ */
+export async function listBenchmarkScores(db: Executor): Promise<BenchmarkScoreDTO[]> {
+  return rows<BenchmarkScoreDTO>(db, sql`
+    select distinct on (me.slug, be.slug)
+      me.slug as "modelSlug", me.name as "modelName", ve.slug as "variantSlug", be.slug as "benchmarkSlug", be.name as "benchmarkName",
+      h.value::float8 as value, h.origin, h.computed, r.released_on::text as "releasedOn"
+    from ecosystem.benchmark_headline_result h
+    join ecosystem.benchmark b on b.id = h.benchmark_id and b.benchmark_kind = 'capability'
     join ecosystem.entity be on be.id = b.id
-    join ecosystem.model_variant v on v.id = br.variant_id
+    join ecosystem.model_variant v on v.id = h.variant_id
+    join ecosystem.entity ve on ve.id = v.id
     join ecosystem.model m on m.id = v.model_id
     join ecosystem.entity me on me.id = m.id
     join ecosystem.model_release r on r.id = m.release_id
-    group by me.slug, me.name, be.slug, be.name`);
+    order by me.slug, be.slug, h.value desc, ve.slug`);
 }
 
 /** Capability profile per model slug, relative to the best result in the catalog for each benchmark. */
 export async function listCapabilityProfiles(db: Executor): Promise<Record<string, CapabilityProfile>> {
-  const scores = await listBestBenchmarkScores(db);
+  const scores = await listBenchmarkScores(db);
   return Object.fromEntries(capabilityProfiles(scores.map((s) => ({ subject: s.modelSlug, benchmark: s.benchmarkSlug, value: s.value }))));
 }
 
@@ -747,17 +824,16 @@ export interface FrontierDTO {
  */
 export async function benchmarkFrontier(db: Executor, benchmarkSlug: string): Promise<FrontierDTO | null> {
   const scores = await rows<{ slug: string; name: string; modelSlug: string; benchmarkName: string; value: number; date: string }>(db, sql`
-    select ve.slug, ve.name, me.slug as "modelSlug", be.name as "benchmarkName", max(br.value)::float8 as value,
+    select ve.slug, ve.name, me.slug as "modelSlug", be.name as "benchmarkName", h.value::float8 as value,
       coalesce(v.released_on, r.released_on)::text as date
-    from ecosystem.benchmark_result br
-    join ecosystem.entity be on be.id = br.benchmark_id
-    join ecosystem.model_variant v on v.id = br.variant_id
+    from ecosystem.benchmark_headline_result h
+    join ecosystem.entity be on be.id = h.benchmark_id
+    join ecosystem.model_variant v on v.id = h.variant_id
     join ecosystem.entity ve on ve.id = v.id
     join ecosystem.model m on m.id = v.model_id
     join ecosystem.entity me on me.id = m.id
     join ecosystem.model_release r on r.id = m.release_id
-    where be.slug = ${benchmarkSlug} and coalesce(v.released_on, r.released_on) is not null
-    group by ve.slug, ve.name, me.slug, be.name, v.released_on, r.released_on`);
+    where be.slug = ${benchmarkSlug} and coalesce(v.released_on, r.released_on) is not null`);
   if (!scores.length) return null;
   const meta = new Map(scores.map((s) => [s.slug, s]));
   return {

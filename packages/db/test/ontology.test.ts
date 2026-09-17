@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { createTestDatabase, resetAndSeed } from '../src/testing';
 import * as s from '../src/schema';
-import { createArtifact, createRelation, createVariant, OntologyError } from '../src/writers';
+import { createArtifact, createRelation, createVariant, ensureEvaluationConfig, OntologyError } from '../src/writers';
 import type { DatabaseHandle } from '../src/client';
 
 let h: DatabaseHandle;
@@ -76,11 +76,37 @@ describe('database constraints', () => {
     await expect(h.db.insert(s.runEnvironment).values({ runtimeId, backend: 'cpu' })).rejects.toMatchObject({ cause: { constraint_name: 'run_environment_one_hardware' } });
   });
 
-  it('rejects benchmark results with zero or two subjects', async () => {
+  it('rejects benchmark runs with zero or two subjects', async () => {
     const [metric] = await h.db.select().from(s.benchmarkMetric).limit(1);
+    const [source] = await h.db.select().from(s.resultSource).where(eq(s.resultSource.key, 'mutinai-catalog'));
+    const configId = await ensureEvaluationConfig(h.db, {});
     await expect(
-      h.db.insert(s.benchmarkResult).values({ benchmarkId: metric!.benchmarkId, metricId: metric!.id, value: 1, origin: 'editorial' }),
-    ).rejects.toMatchObject({ cause: { constraint_name: 'benchmark_result_one_subject' } });
+      h.db.insert(s.benchmarkRun).values({ benchmarkId: metric!.benchmarkId, configId, resultSourceId: source!.id, origin: 'editorial' }),
+    ).rejects.toMatchObject({ cause: { constraint_name: 'benchmark_run_one_subject' } });
+  });
+
+  it('refuses runs from a source whose redistribution permission has not been established', async () => {
+    const [metric] = await h.db.select().from(s.benchmarkMetric).limit(1);
+    const variantId = await idOf('model_variant', 'llama-3-1-8b-instruct');
+    const [blocked] = await h.db.select().from(s.resultSource).where(eq(s.resultSource.key, 'livebench-leaderboard'));
+    expect(blocked!.ingestionEnabled).toBe(false);
+    const configId = await ensureEvaluationConfig(h.db, {});
+    await expect(
+      h.db.insert(s.benchmarkRun).values({ benchmarkId: metric!.benchmarkId, variantId, configId, resultSourceId: blocked!.id, origin: 'benchmark_operator' }),
+    ).rejects.toMatchObject({ cause: { constraint_name: 'benchmark_run_source_enabled_fk' } });
+  });
+
+  it('refuses to enable a source whose licence has not been read', async () => {
+    await expect(
+      h.db.update(s.resultSource).set({ ingestionEnabled: true }).where(eq(s.resultSource.key, 'livebench-leaderboard')),
+    ).rejects.toMatchObject({ cause: { constraint_name: 'result_source_permission_checked' } });
+  });
+
+  it('keeps one model under two evaluation configurations rather than making two models', async () => {
+    const fc = await ensureEvaluationConfig(h.db, { label: 'function calling', promptMode: 'function_calling' });
+    const prompted = await ensureEvaluationConfig(h.db, { label: 'prompt', promptMode: 'prompt' });
+    expect(fc).not.toBe(prompted);
+    expect(await ensureEvaluationConfig(h.db, { label: 'a different label', promptMode: 'function_calling' })).toBe(fc);
   });
 
   it('rejects MoE models without active parameter counts', async () => {

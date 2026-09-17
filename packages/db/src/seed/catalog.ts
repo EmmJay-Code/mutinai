@@ -280,17 +280,20 @@ export const benchmarks: BenchmarkSeed[] = [
   },
 ];
 
-/** Developer-reported capability results (illustrative values). */
-export const capabilityResults: { variant: string; benchmark: string; metric: string; value: number; setting?: string }[] = [
-  { variant: 'llama-3-1-8b-instruct', benchmark: 'mmlu-pro', metric: 'accuracy', value: 48.3, setting: '5-shot CoT' },
-  { variant: 'llama-3-1-8b-instruct', benchmark: 'gpqa-diamond', metric: 'accuracy', value: 30.4, setting: '0-shot' },
-  { variant: 'llama-3-1-8b-instruct', benchmark: 'humaneval', metric: 'pass_at_1', value: 72.6, setting: '0-shot' },
+/** Developer-reported capability results (illustrative values). How the subject was run is structured, not prose. */
+export const capabilityResults: {
+  variant: string; benchmark: string; metric: string; value: number;
+  config?: { label?: string; shots?: number; chainOfThought?: boolean; reasoningEnabled?: boolean };
+}[] = [
+  { variant: 'llama-3-1-8b-instruct', benchmark: 'mmlu-pro', metric: 'accuracy', value: 48.3, config: { label: '5-shot CoT', shots: 5, chainOfThought: true } },
+  { variant: 'llama-3-1-8b-instruct', benchmark: 'gpqa-diamond', metric: 'accuracy', value: 30.4, config: { label: '0-shot', shots: 0 } },
+  { variant: 'llama-3-1-8b-instruct', benchmark: 'humaneval', metric: 'pass_at_1', value: 72.6, config: { label: '0-shot', shots: 0 } },
   { variant: 'llama-3-1-8b-instruct', benchmark: 'ifeval', metric: 'strict_prompt', value: 80.4 },
-  { variant: 'llama-3-1-70b-instruct', benchmark: 'mmlu-pro', metric: 'accuracy', value: 66.4, setting: '5-shot CoT' },
-  { variant: 'llama-3-1-70b-instruct', benchmark: 'humaneval', metric: 'pass_at_1', value: 80.5, setting: '0-shot' },
-  { variant: 'llama-3-3-70b-instruct', benchmark: 'mmlu-pro', metric: 'accuracy', value: 68.9, setting: '5-shot CoT' },
-  { variant: 'llama-3-3-70b-instruct', benchmark: 'gpqa-diamond', metric: 'accuracy', value: 50.5, setting: '0-shot CoT' },
-  { variant: 'llama-3-3-70b-instruct', benchmark: 'humaneval', metric: 'pass_at_1', value: 88.4, setting: '0-shot' },
+  { variant: 'llama-3-1-70b-instruct', benchmark: 'mmlu-pro', metric: 'accuracy', value: 66.4, config: { label: '5-shot CoT', shots: 5, chainOfThought: true } },
+  { variant: 'llama-3-1-70b-instruct', benchmark: 'humaneval', metric: 'pass_at_1', value: 80.5, config: { label: '0-shot', shots: 0 } },
+  { variant: 'llama-3-3-70b-instruct', benchmark: 'mmlu-pro', metric: 'accuracy', value: 68.9, config: { label: '5-shot CoT', shots: 5, chainOfThought: true } },
+  { variant: 'llama-3-3-70b-instruct', benchmark: 'gpqa-diamond', metric: 'accuracy', value: 50.5, config: { label: '0-shot CoT', shots: 0, chainOfThought: true } },
+  { variant: 'llama-3-3-70b-instruct', benchmark: 'humaneval', metric: 'pass_at_1', value: 88.4, config: { label: '0-shot', shots: 0 } },
   { variant: 'llama-3-3-70b-instruct', benchmark: 'ifeval', metric: 'strict_prompt', value: 92.1 },
   { variant: 'qwen2-5-7b-instruct', benchmark: 'mmlu-pro', metric: 'accuracy', value: 56.3 },
   { variant: 'qwen2-5-7b-instruct', benchmark: 'gpqa-diamond', metric: 'accuracy', value: 36.4 },
@@ -302,9 +305,9 @@ export const capabilityResults: { variant: string; benchmark: string; metric: st
   { variant: 'qwen2-5-32b-instruct', benchmark: 'humaneval', metric: 'pass_at_1', value: 88.4 },
   { variant: 'qwen2-5-coder-32b-instruct', benchmark: 'humaneval', metric: 'pass_at_1', value: 92.7 },
   { variant: 'qwen2-5-coder-32b-instruct', benchmark: 'livecodebench', metric: 'pass_at_1', value: 31.4 },
-  { variant: 'qwen3-30b-a3b', benchmark: 'gpqa-diamond', metric: 'accuracy', value: 65.8, setting: 'thinking mode' },
-  { variant: 'qwen3-30b-a3b', benchmark: 'livecodebench', metric: 'pass_at_1', value: 62.6, setting: 'thinking mode' },
-  { variant: 'mistral-small-24b-instruct-2501', benchmark: 'mmlu-pro', metric: 'accuracy', value: 66.3, setting: '5-shot CoT' },
+  { variant: 'qwen3-30b-a3b', benchmark: 'gpqa-diamond', metric: 'accuracy', value: 65.8, config: { label: 'thinking mode', reasoningEnabled: true } },
+  { variant: 'qwen3-30b-a3b', benchmark: 'livecodebench', metric: 'pass_at_1', value: 62.6, config: { label: 'thinking mode', reasoningEnabled: true } },
+  { variant: 'mistral-small-24b-instruct-2501', benchmark: 'mmlu-pro', metric: 'accuracy', value: 66.3, config: { label: '5-shot CoT', shots: 5, chainOfThought: true } },
   { variant: 'mistral-small-24b-instruct-2501', benchmark: 'humaneval', metric: 'pass_at_1', value: 84.8 },
   { variant: 'gemma-3-27b-it', benchmark: 'mmlu-pro', metric: 'accuracy', value: 67.5 },
   { variant: 'gemma-3-27b-it', benchmark: 'gpqa-diamond', metric: 'accuracy', value: 42.4 },

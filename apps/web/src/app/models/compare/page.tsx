@@ -27,7 +27,7 @@ export default async function ComparePage({ searchParams }: { searchParams: SP }
     catalog.listModels(db),
     catalog.listCapabilityProfiles(db),
     compatQueries.compatSummaryByModel(db, { contextLength: 8192, ...measurementPolicy() }),
-    catalog.listBestBenchmarkScores(db),
+    catalog.listBenchmarkScores(db),
   ]);
   const models = details.flatMap((d) => (d ? [{ detail: d, item: list.find((m) => m.slug === d.slug)! }] : []));
   const benchmarks = [...new Map(bestScores.filter((b) => slugs.includes(b.modelSlug)).map((b) => [b.benchmarkSlug, b.benchmarkName] as const)).entries()];

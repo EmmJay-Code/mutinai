@@ -202,17 +202,20 @@ export async function loadCompatCatalog(db: Executor, opts: MeasurementOptions =
 export async function loadMeasurements(db: Executor, opts: MeasurementOptions = {}): Promise<Measurement[]> {
   const gen = sql.join(GEN_KEYS.map((k) => sql`${k}`), sql`, `);
   const prompt = sql.join(PROMPT_KEYS.map((k) => sql`${k}`), sql`, `);
+  // `max(...)` here pivots one run's metrics into columns — each key appears once per run — rather than picking a
+  // best value across runs.
   const canonical = sql`
-    select env.hardware_configuration_id as "hardwareConfigurationId", br.artifact_id as "artifactId", env.runtime_id as "runtimeId",
+    select env.hardware_configuration_id as "hardwareConfigurationId", run.artifact_id as "artifactId", env.runtime_id as "runtimeId",
       env.context_length as "contextLength",
       max(case when bm.key in (${gen}) then br.value end) as "genTps",
       max(case when bm.key in (${prompt}) then br.value end) as "promptTps",
       'canonical' as origin
     from ecosystem.benchmark_result br
-    join ecosystem.run_environment env on env.id = br.environment_id
+    join ecosystem.benchmark_run run on run.id = br.run_id
+    join ecosystem.run_environment env on env.id = run.environment_id
     join ecosystem.benchmark_metric bm on bm.id = br.metric_id
-    where br.artifact_id is not null and env.hardware_configuration_id is not null
-    group by env.id, br.artifact_id`;
+    where run.artifact_id is not null and env.hardware_configuration_id is not null
+    group by run.id, env.id, run.artifact_id`;
   if (opts.includeCommunityMeasurements === false) return rows<Measurement>(db, canonical);
   return rows<Measurement>(db, sql`${canonical}
     union all

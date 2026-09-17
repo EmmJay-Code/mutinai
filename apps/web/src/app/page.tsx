@@ -79,7 +79,7 @@ export default async function DiscoverPage() {
     catalog.listProjects(db, { category: 'runtime' }),
     catalog.listDevices(db, { sort: 'memory' }),
     catalog.getCatalogCounts(db),
-    catalog.listBestBenchmarkScores(db),
+    catalog.listBenchmarkScores(db),
     catalog.listLatestDevicePrices(db),
   ]);
   const previewHardware = await compatQueries.loadReferenceHardware(db, PREVIEW_SYSTEM);

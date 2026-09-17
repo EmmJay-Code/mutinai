@@ -55,10 +55,18 @@ quantization_scheme (Q4_K_M, AWQ-4bit, MLX-4bit, FP8, BF16)   referenced by arti
   formats, supported backends, and whether it can offload layers to system RAM.
 
 ### Benchmarks and results
-- `benchmark` (capability or performance) → `benchmark_metric` (unit, direction).
-- `benchmark_result`: a canonical, source-attributed result about a variant or
-  artifact, optionally with a `run_environment` (hardware config, runtime,
-  version, backend, context, batch, offload, …).
+- `benchmark` (capability or performance) → `benchmark_metric` (unit, direction)
+  and `benchmark_subtask` (the source's own tasks or categories, nesting one
+  level). A benchmark names its headline metric and how its subtasks roll up.
+- `benchmark_run`: one evaluation of one variant or artifact, under one
+  `evaluation_config`, from one `result_source`, optionally with a
+  `run_environment` (hardware config, runtime, version, backend, context, batch,
+  offload, …).
+- `benchmark_result`: one measured fact inside a run — metric, optional subtask,
+  value, and the numerator and count it is a fraction of.
+- `result_source` records what the source's licence permits; `evaluation_config`
+  keeps prompt mode, thinking effort and the rest out of model identity. Both are
+  described in [ADR-0010](0010-benchmark-results.md).
 - Community `benchmark_submission`s live in the `community` schema with their own
   `run_environment` and measurements, moderation status and visibility. They are
   never silently merged into canonical results.

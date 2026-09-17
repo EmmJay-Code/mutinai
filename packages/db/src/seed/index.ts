@@ -3,9 +3,9 @@ import { and, eq } from 'drizzle-orm';
 import type { Database, Executor } from '../client';
 import { createAccountWithProfile } from '../identity';
 import * as s from '../schema';
-import { ensureQuantizationSchemes } from '../reference';
+import { ensureBenchmarkDefinitions, ensureQuantizationSchemes, ensureResultSources } from '../reference';
 import { refreshSearchText } from '../search-text';
-import { createArtifact, createEntity, createRelation, createVariant, ensureSource, linkExternalId } from '../writers';
+import { createArtifact, createEntity, createRelation, createVariant, ensureEvaluationConfig, ensureSource, insertRun, linkExternalId } from '../writers';
 import * as catalog from './catalog';
 import * as community from './community';
 
@@ -163,28 +163,45 @@ export async function seedCatalog(db: Executor): Promise<Registry> {
     const id = await createEntity(db, { kind: 'benchmark', slug: b.slug, name: b.name, summary: b.summary });
     await db.insert(s.benchmark).values({ id, benchmarkKind: b.kind, homepageUrl: b.homepage, methodology: b.methodology });
     reg.set('benchmark', b.slug, id);
+    const metricIds: string[] = [];
     for (const m of b.metrics) {
       const [row] = await db.insert(s.benchmarkMetric).values({ benchmarkId: id, key: m.key, label: m.label, unit: m.unit, higherIsBetter: m.higherIsBetter ?? true }).returning({ id: s.benchmarkMetric.id });
       reg.set('metric', `${b.slug}.${m.key}`, row!.id);
+      metricIds.push(row!.id);
     }
+    // A benchmark that measures one thing can name its headline metric; one that reports several privileges none.
+    if (metricIds.length === 1) await db.update(s.benchmark).set({ headlineMetricId: metricIds[0] }).where(eq(s.benchmark.id, id));
   }
 
+  const catalogSourceId = (await ensureResultSources(db)).ids.get('mutinai-catalog')!;
+  // The benchmarks Mutinai ingests independent results for exist whether or not anything has been ingested yet.
+  await ensureBenchmarkDefinitions(db);
+
   for (const r of catalog.capabilityResults) {
+    const run = await insertRun(db, {
+      benchmarkId: reg.get('benchmark', r.benchmark), variantId: reg.get('model_variant', r.variant),
+      configId: await ensureEvaluationConfig(db, r.config ?? {}), resultSourceId: catalogSourceId,
+      origin: 'developer_reported', sourceRecordId,
+    });
     await db.insert(s.benchmarkResult).values({
-      benchmarkId: reg.get('benchmark', r.benchmark), metricId: reg.get('metric', `${r.benchmark}.${r.metric}`), variantId: reg.get('model_variant', r.variant),
-      value: r.value, evaluationSetting: r.setting, origin: 'developer_reported', sourceRecordId,
+      runId: run, benchmarkId: reg.get('benchmark', r.benchmark), metricId: reg.get('metric', `${r.benchmark}.${r.metric}`), value: r.value,
     });
   }
 
+  const unconfigured = await ensureEvaluationConfig(db, {});
   for (const r of catalog.performanceResults) {
     const [env] = await db
       .insert(s.runEnvironment)
       .values({ hardwareConfigurationId: reg.get('hardware_configuration', r.config), runtimeId: reg.get('project', r.runtime), runtimeVersion: r.runtimeVersion, backend: r.backend, contextLength: r.contextLength, batchSize: 1 })
       .returning({ id: s.runEnvironment.id });
+    // One environment is one measurement: prompt and generation throughput belong to the same run.
+    const run = await insertRun(db, {
+      benchmarkId: reg.get('benchmark', r.benchmark), artifactId: reg.get('model_artifact', r.artifact), configId: unconfigured,
+      resultSourceId: catalogSourceId, origin: 'editorial', environmentId: env!.id, sourceRecordId,
+    });
     for (const [key, value] of Object.entries(r.values)) {
       await db.insert(s.benchmarkResult).values({
-        benchmarkId: reg.get('benchmark', r.benchmark), metricId: reg.get('metric', `${r.benchmark}.${key}`), artifactId: reg.get('model_artifact', r.artifact),
-        environmentId: env!.id, value, origin: 'editorial', sourceRecordId,
+        runId: run, benchmarkId: reg.get('benchmark', r.benchmark), metricId: reg.get('metric', `${r.benchmark}.${key}`), value,
       });
     }
   }
