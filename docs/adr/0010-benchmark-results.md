@@ -1,6 +1,6 @@
 # ADR-0010: Benchmark evidence and results
 
-Status: policy accepted; schema implemented in migrations `0006`–`0007`; no adapters built (September 2026)
+Status: policy accepted; schema implemented in migrations `0006`–`0007`; BFCL ingesting (September 2026)
 
 This ADR was written in two sittings and is recorded as one decision. The first settled *what counts as benchmark
 evidence and what Mutinai is allowed to redistribute*; the second read the sources the policy admits and built the
@@ -142,11 +142,11 @@ closed that was not actually implemented.
 | Gap | Status |
 | --- | --- |
 | **G1** — `result_origin` cannot express the layers | **Closed.** Replaced via a new type and column swap; five values, plus `result_origin_rank`. |
-| **G2** — two origin vocabularies (`compat.ts` says `canonical` / `community_verified`) | **Open.** `loadMeasurements` still projects `'canonical'`. A reader of the compat output still cannot tell a developer-reported number from an independent one. |
+| **G2** — two origin vocabularies (`compat.ts` says `canonical` / `community_verified`) | **Open, and not reached by the first adapter.** `loadMeasurements` selects runs that have both an artifact and a hardware configuration; BFCL runs have a variant subject and no environment, so no BFCL result can reach that reading. It becomes wrong when a *performance* source lands, not this one. |
 | **G3** — no licence or redistribution field | **Closed.** `result_source`, with the enabled-source foreign key making it enforceable rather than advisory. |
 | **G4** — evaluation configuration is one free-text column | **Closed.** `evaluation_config`, interned; the legacy `evaluation_setting` strings were parsed once in the backfill and the column dropped. |
 | **G5** — no uncertainty or sample count | **Partly closed.** `sample_numerator` and `sample_count` exist, paired and range-checked. **`stderr` was not added**: none of the four sources researched publishes one, so it would have been a column of nulls. It returns when a source reports it. |
-| **G6** — nothing requires a result to be citable | **Open.** `citation_url` and `source_record_id` both moved to `benchmark_run` and are both still nullable. The `num_nonnulls(...) >= 1` check was not added. |
+| **G6** — nothing requires a result to be citable | **Open, and deliberately not taken with the first adapter.** Every BFCL run carries `citation_url`, asserted in the adapter's tests, so the constraint would not have caught anything here. It *would* now hold on seeded data (checked: 52 seeded runs, none lacking both), but it would fail the hand-written rows in `benchmark-results.test.ts`, which stand in for adapters and cite nothing. Worth taking with the second adapter, together with fixing those rows. |
 | **G7** — no dedupe key for re-ingested results | **Closed.** `benchmark_run.dedupe_key` is unique, and `benchmark_result` is unique over `(run_id, metric_id, subtask_id)` with nulls not distinct. |
 | **G8** — summary queries collapse with `max()` | **Closed.** `listBestBenchmarkScores` deleted; selection is by `result_origin_rank` in the two views. The remaining `max(...)` in `compat.ts` pivots one run's metrics into columns and does not choose between runs. |
 | **G9** — community submissions capture less than layer 3 demands | **Open.** `community.benchmark_submission` is untouched: still no harness or harness version, no evidence column, no measured-on date, and `artifact_id` is still `not null`, so a community capability run of an unquantized variant cannot be filed. |
@@ -175,14 +175,35 @@ closed that was not actually implemented.
 - Layer 2 will be small at first. Independent open-model results with clear reuse terms are not abundant, and the
   licence gate rejects some obvious candidates.
 
+## Update, 17 September 2026: BFCL is ingesting
+
+The first independent source is live. What reading it closely changed:
+
+- **The benchmark definition was wrong in three of its six groups** and has been corrected against
+  `bfcl_eval/eval_checker/eval_runner_helper.py`: non-live means four terms rather than six (`Simple AST` is already
+  a sub-mean of three languages), the live group is weighted by question count rather than pooled over samples, and
+  relevance is excluded from the overall entirely — BFCL computes it and then does not pass it to the weighting.
+  The corrected roll-up reproduces BFCL's published overall to within 0.004 points on real rows.
+- **No counts, after all.** Decision 8 assumed BFCL's `{"accuracy", "correct_count", "total_count"}` score files
+  were reachable. They are generated locally and never committed, and the published CSV has no count columns, so
+  BFCL results store a percentage with both count fields null. The fixed per-category question counts from the
+  committed dataset are used as *subtask weights*, which reproduces the source's arithmetic without inventing a
+  numerator from a rounded percentage.
+- **`ensureBenchmarkDefinitions` now updates a subtask's shape**, not just inserts it. A correction to how a
+  benchmark rolls up otherwise never reaches a database that already holds the old shape.
+- **Identity resolution is exact or refused.** BFCL names models by display name, and display names are not unique;
+  the repo id lives only in `model_config.py`. A row resolves only when its candidates agree on one Hugging Face
+  repo id, and is skipped and reported otherwise.
+
 ## What remains
 
 1. **The LiveBench licence answer.** Registered, `redistribution = 'unverified'`, ingestion disabled and enforced.
    Unblock only on an explicit statement from the maintainers that the Apache-2.0 grant covers
    `public/table_*.csv` in `LiveBench/new-livebench`. Not yet asked — the wording to send and where to send it are in
    [benchmark-sources.md](../benchmark-sources.md#7-the-livebench-licensing-question-where-to-send-it-and-what-to-say).
-2. **The first adapter.** BFCL is the fallback if the LiveBench answer does not come, and is the only one of the four
-   whose licence explicitly names the leaderboard statistics.
-3. **G2 and G6** are cheap and should land with the first adapter, which is the change that makes them matter.
+2. **Catalog coverage, not adapter coverage.** BFCL publishes 109 rows; 57 carry a Hugging Face repo id and 4 match
+   a model Mutinai holds. The limit is the size of the sample catalog, not the adapter, and it lifts as Hub
+   ingestion adds variants.
+3. **G2 and G6** were examined against the first adapter and neither was required by it; see the gap table for the evidence. They should land with the second adapter.
 4. **G9, G10 and G13** when community submissions, the first correction, and the first Mutinai-run evaluation arrive
    respectively.

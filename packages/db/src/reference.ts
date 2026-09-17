@@ -56,7 +56,7 @@ export const resultSources = [
     ingestionEnabled: false,
     priority: 50,
     permissionNote:
-      'Blocked. The harness repository (LiveBench/LiveBench) carries an Apache-2.0 LICENSE, but the leaderboard tables are published from LiveBench/new-livebench — the repository whose gh-pages branch serves livebench.ai — which carries no licence file of its own. The datasheet grant describes the question set on Hugging Face, not the score tables, so Apache demonstrably covers the code and the questions, and not demonstrably the tables. Unblock only on an explicit statement from the maintainers that Apache-2.0 covers public/table_*.csv; then set redistribution to attribution_required with the credit line, and enable.',
+      'Blocked. The harness repository (LiveBench/LiveBench) carries an Apache-2.0 LICENSE, but the leaderboard tables are published from LiveBench/new-livebench — the repository whose gh-pages branch serves livebench.ai — which carries no licence file of its own. The datasheet grant describes the question set on Hugging Face, not the score tables, so Apache demonstrably covers the code and the questions, and not demonstrably the tables. Unblock only on an explicit statement from the maintainers that Apache-2.0 covers public/table_*.csv; then set redistribution to attribution_required with the credit line, and enable. Asked 2026-09-17 at https://github.com/LiveBench/new-livebench/issues/53 — that issue is the pending decision.',
   },
   {
     key: 'bfcl-leaderboard',
@@ -200,26 +200,38 @@ export const benchmarkDefinitions: BenchmarkDefinition[] = [
     homepageUrl: 'https://gorilla.cs.berkeley.edu/leaderboard.html',
     summary: 'Executable evaluation of function calling across single-turn, multi-turn and agentic categories.',
     methodology:
-      'Per-category accuracy with its correct and total counts, as the harness writes them. The overall is recomputed here from those counts using the harness\'s own mixture: an unweighted mean within the non-live, multi-turn and agentic groups, a sample-weighted mean within the live group, and a fixed percentage weighting across groups.',
+      'Per-category accuracy as the published leaderboard reports it. The overall is recomputed here from those categories using the harness\'s own mixture (bfcl_eval/eval_checker/eval_runner_helper.py): an unweighted mean within the non-live, multi-turn and agentic groups, a question-count-weighted mean within the live group, and a fixed percentage weighting across groups. BFCL publishes no per-category counts, so the live weights are the fixed BFCL_v4 question counts and no result carries a sample count.',
     metrics: [{ key: 'accuracy', label: 'Accuracy', unit: '%' }],
     headlineMetric: 'accuracy',
     rollupMethod: 'weighted_subtasks',
     /**
-     * Group weights are the harness's `[10, 10, 10, 30, 40]` over non-live, live, irrelevance, multi-turn and
-     * agentic. Agentic is the unweighted mean of its web-search and memory summaries, so it is stored as two
-     * groups of 20 — arithmetically the same, and it keeps the tree one level deep.
+     * The group weights are the harness's `[10, 10, 10, 30, 40]` over non-live, live, irrelevance, multi-turn and
+     * agentic. Agentic is the unweighted mean of its web-search and memory summaries, so it is stored as two groups
+     * of 20 — arithmetically identical, and it keeps the tree one level deep.
+     *
+     * Two things here are not guesses about BFCL but readings of its code:
+     *
+     * - Non-live means four terms, not six. `Simple AST` is already the mean of the Python, Java and JavaScript
+     *   simple categories, and the leaderboard publishes that sub-mean rather than its parts, so the published
+     *   column is stored as one leaf.
+     * - Live is weighted by question count, not evaluated unweighted. The counts are fixed properties of the
+     *   BFCL_v4 dataset (`bfcl_eval/data/BFCL_v4_live_*.json`: 258, 1053, 16, 24), so they are leaf weights here.
+     *   That reproduces `calculate_weighted_accuracy` exactly without inventing a per-model sample count.
+     *
+     * `Relevance Detection` is published but is deliberately absent: the harness computes it and then does not
+     * include it in the overall. It is kept in the run's raw payload instead of being stored as a fact.
      */
     subtasks: [
       { key: 'non_live', label: 'Non-live', weight: 10, rollupMethod: 'mean_of_subtasks', children: [
-        { key: 'simple_python', label: 'Simple (Python)' }, { key: 'simple_java', label: 'Simple (Java)' },
-        { key: 'simple_javascript', label: 'Simple (JavaScript)' }, { key: 'multiple', label: 'Multiple' },
-        { key: 'parallel', label: 'Parallel' }, { key: 'parallel_multiple', label: 'Parallel multiple' }] },
-      { key: 'live', label: 'Live', weight: 10, rollupMethod: 'pooled_samples', children: [
-        { key: 'live_simple', label: 'Live simple' }, { key: 'live_multiple', label: 'Live multiple' },
-        { key: 'live_parallel', label: 'Live parallel' }, { key: 'live_parallel_multiple', label: 'Live parallel multiple' }] },
-      { key: 'irrelevance', label: 'Irrelevance and relevance', weight: 10, rollupMethod: 'mean_of_subtasks', children: [
-        { key: 'irrelevance_non_live', label: 'Irrelevance (non-live)' }, { key: 'live_irrelevance', label: 'Irrelevance (live)' },
-        { key: 'live_relevance', label: 'Relevance (live)' }] },
+        { key: 'non_live_simple', label: 'Simple AST' }, { key: 'non_live_multiple', label: 'Multiple AST' },
+        { key: 'non_live_parallel', label: 'Parallel AST' }, { key: 'non_live_parallel_multiple', label: 'Parallel multiple AST' }] },
+      { key: 'live', label: 'Live', weight: 10, rollupMethod: 'weighted_subtasks', children: [
+        { key: 'live_simple', label: 'Live simple AST', weight: 258 },
+        { key: 'live_multiple', label: 'Live multiple AST', weight: 1053 },
+        { key: 'live_parallel', label: 'Live parallel AST', weight: 16 },
+        { key: 'live_parallel_multiple', label: 'Live parallel multiple AST', weight: 24 }] },
+      // Published as one number that is already the mean of the non-live and live irrelevance categories.
+      { key: 'irrelevance', label: 'Irrelevance detection', weight: 10, rollupMethod: 'mean_of_subtasks' },
       { key: 'multi_turn', label: 'Multi turn', weight: 30, rollupMethod: 'mean_of_subtasks', children: [
         { key: 'multi_turn_base', label: 'Base' }, { key: 'multi_turn_miss_func', label: 'Missing function' },
         { key: 'multi_turn_miss_param', label: 'Missing parameter' }, { key: 'multi_turn_long_context', label: 'Long context' }] },
@@ -287,11 +299,15 @@ export async function ensureBenchmarkDefinitions(db: Executor): Promise<{ ids: M
         .select({ id: s.benchmarkSubtask.id })
         .from(s.benchmarkSubtask)
         .where(and(eq(s.benchmarkSubtask.benchmarkId, id!), eq(s.benchmarkSubtask.key, node.key)));
+      const shape = { parentId, label: node.label, weight: node.weight ?? null, rollupMethod: node.rollupMethod ?? null, position };
+      // Updated rather than left alone: a correction to how a benchmark rolls up has to reach databases that
+      // already hold the old shape, or the arithmetic silently stays wrong wherever it was first seeded.
+      if (found) await db.update(s.benchmarkSubtask).set(shape).where(eq(s.benchmarkSubtask.id, found.id));
       const subtaskId = found
         ? found.id
         : (await db
             .insert(s.benchmarkSubtask)
-            .values({ benchmarkId: id!, parentId, key: node.key, label: node.label, weight: node.weight, rollupMethod: node.rollupMethod, position })
+            .values({ benchmarkId: id!, key: node.key, ...shape })
             .returning({ id: s.benchmarkSubtask.id }))[0]!.id;
       for (const [i, child] of (node.children ?? []).entries()) await upsertSubtask(child, subtaskId, i);
     };

@@ -126,63 +126,62 @@ describe('LiveBench', () => {
 });
 
 describe('BFCL', () => {
-  it('stores per-category accuracy with its counts, and recomputes the overall the harness way', async () => {
+  it('stores the published categories and recomputes the overall the harness way', async () => {
     const benchmarkId = await idOf('benchmark', 'bfcl');
     const categories = await subtaskIds('bfcl');
     const metric = await metricId('bfcl', 'accuracy');
-    // The shape of a score file header is `{accuracy, correct_count, total_count}` per test category
-    // (bfcl_eval/eval_checker/eval_runner_helper.py, save_eval_results). Counts below are illustrative: the
-    // published score files are generated locally and are not committed to the repository.
-    const scores: Record<string, [number, number]> = {
-      simple_python: [352, 400], simple_java: [88, 100], simple_javascript: [42, 50], multiple: [176, 200],
-      parallel: [148, 200], parallel_multiple: [140, 200],
-      live_simple: [219, 258], live_multiple: [869, 1053], live_parallel: [11, 16], live_parallel_multiple: [17, 24],
-      irrelevance_non_live: [190, 240], live_irrelevance: [619, 882], live_relevance: [15, 18],
-      multi_turn_base: [80, 200], multi_turn_miss_func: [58, 200], multi_turn_miss_param: [70, 200], multi_turn_long_context: [52, 200],
-      web_search_base: [58, 100], web_search_no_snippet: [41, 100],
-      memory_kv: [55, 100], memory_vector: [47, 100], memory_rec_sum: [39, 100],
+    // The `Llama-3.3-70B-Instruct (FC)` row of https://gorilla.cs.berkeley.edu/data_overall.csv, verbatim. BFCL
+    // publishes no per-category counts, so nothing here carries a numerator: the live group is weighted by the
+    // fixed BFCL_v4 question counts, which live on the subtasks as weights.
+    const published: Record<string, number> = {
+      non_live_simple: 76.08, non_live_multiple: 95.0, non_live_parallel: 90.0, non_live_parallel_multiple: 91.0,
+      live_simple: 81.4, live_multiple: 75.5, live_parallel: 81.25, live_parallel_multiple: 70.83,
+      irrelevance: 53.53,
+      multi_turn_base: 26.0, multi_turn_miss_func: 19.0, multi_turn_miss_param: 14.5, multi_turn_long_context: 26.5,
+      web_search_base: 14.0, web_search_no_snippet: 6.0,
+      memory_kv: 4.52, memory_vector: 8.39, memory_rec_sum: 11.61,
     };
-    // model_config.py carries "qwen3-0.6b-FC" and "qwen3-0.6b" as one model in two modes; they are one variant
-    // here, and the mode is the configuration.
+    // model_config.py carries `Qwen/Qwen3-32B-FC` and `Qwen/Qwen3-32B` as one model in two modes; the mode is the
+    // configuration, never a second variant.
     const runId = await insertRun(h.db, {
       benchmarkId,
-      variantId: await idOf('model_variant', 'qwen2-5-7b-instruct'),
-      configId: await ensureEvaluationConfig(h.db, { label: 'function calling', promptMode: 'function_calling' }),
+      variantId: await idOf('model_variant', 'llama-3-3-70b-instruct'),
+      configId: await ensureEvaluationConfig(h.db, { label: 'Function calling', promptMode: 'function_calling' }),
       resultSourceId: await sourceId('bfcl-leaderboard'),
       origin: 'benchmark_operator',
       benchmarkVersion: 'BFCL_v4',
       harnessName: 'bfcl',
-      // Rank, cost and latency are the leaderboard's presentation, not a measurement of the model.
-      raw: { rank: 41, 'Total Cost ($)': 0.0, 'Latency Mean (s)': 1.9, model_entry: 'qwen3-0.6b-FC' },
-      reportedRollupValue: 42.0,
+      // Rank, cost and latency are the leaderboard's presentation, not a measurement of the model. `Relevance
+      // Detection` is published but excluded from BFCL's own overall, so it stays here too.
+      raw: { Rank: '62', 'Total Cost ($)': '29.54', 'Latency Mean (s)': '26.11', 'Relevance Detection': '100.00%' },
+      reportedRollupValue: 31.9,
     });
-    for (const [key, [correct, total]] of Object.entries(scores)) {
-      await h.db.insert(s.benchmarkResult).values({
-        runId, benchmarkId, metricId: metric, subtaskId: categories.get(key)!,
-        value: (100 * correct) / total, sampleNumerator: correct, sampleCount: total,
-      });
+    for (const [key, value] of Object.entries(published)) {
+      await h.db.insert(s.benchmarkResult).values({ runId, benchmarkId, metricId: metric, subtaskId: categories.get(key)!, value });
     }
 
     const mean = (...xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-    const acc = (k: string) => (100 * scores[k]![0]) / scores[k]![1];
-    const pooled = (...keys: string[]) =>
-      (100 * keys.reduce((a, k) => a + scores[k]![0], 0)) / keys.reduce((a, k) => a + scores[k]![1], 0);
-    // eval_runner_helper.py: unweighted within non-live, multi-turn, agentic and irrelevance; weighted by sample
-    // count within live; then [10, 10, 10, 30, 40] across non-live, live, irrelevance, multi-turn and agentic.
-    const nonLive = mean(acc('simple_python'), acc('simple_java'), acc('simple_javascript'), acc('multiple'), acc('parallel'), acc('parallel_multiple'));
-    const live = pooled('live_simple', 'live_multiple', 'live_parallel', 'live_parallel_multiple');
-    const irrelevance = mean(acc('irrelevance_non_live'), acc('live_irrelevance'), acc('live_relevance'));
-    const multiTurn = mean(acc('multi_turn_base'), acc('multi_turn_miss_func'), acc('multi_turn_miss_param'), acc('multi_turn_long_context'));
-    const webSearch = mean(acc('web_search_base'), acc('web_search_no_snippet'));
-    const memory = mean(acc('memory_kv'), acc('memory_vector'), acc('memory_rec_sum'));
-    const overall = (10 * nonLive + 10 * live + 10 * irrelevance + 30 * multiTurn + 20 * webSearch + 20 * memory) / 100;
+    const at = (k: string) => published[k]!;
+    // eval_runner_helper.py: unweighted within non-live, multi-turn and agentic; question-count-weighted within
+    // live; then [10, 10, 10, 30, 40] across non-live, live, irrelevance, multi-turn and agentic. Agentic is the
+    // unweighted mean of the web-search and memory summaries, stored here as two groups of 20.
+    const nonLive = mean(at('non_live_simple'), at('non_live_multiple'), at('non_live_parallel'), at('non_live_parallel_multiple'));
+    const counts: Record<string, number> = { live_simple: 258, live_multiple: 1053, live_parallel: 16, live_parallel_multiple: 24 };
+    const live =
+      Object.entries(counts).reduce((a, [k, n]) => a + at(k) * n, 0) / Object.values(counts).reduce((a, b) => a + b, 0);
+    const multiTurn = mean(at('multi_turn_base'), at('multi_turn_miss_func'), at('multi_turn_miss_param'), at('multi_turn_long_context'));
+    const webSearch = mean(at('web_search_base'), at('web_search_no_snippet'));
+    const memory = mean(at('memory_kv'), at('memory_vector'), at('memory_rec_sum'));
+    const overall = (10 * nonLive + 10 * live + 10 * at('irrelevance') + 30 * multiTurn + 20 * webSearch + 20 * memory) / 100;
 
     const computed = await rollup(h.db, runId);
     expect(computed!.value).toBeCloseTo(overall, 6);
-    expect(computed!.subtask_count).toBe(22);
-    // The leaderboard's own overall is kept for reconciliation and is not what the site shows.
-    expect(computed!.reported_rollup_value).toBe(42.0);
-    expect(computed!.value).not.toBeCloseTo(42.0, 3);
+    expect(computed!.subtask_count).toBe(18);
+    // The whole point of recomputing: the stored facts add up to the number BFCL printed.
+    expect(computed!.value).toBeCloseTo(31.9, 1);
+    expect(computed!.reported_rollup_value).toBe(31.9);
+    // No counts are published, so none are claimed.
+    expect(computed!.sample_count).toBeNull();
   });
 });
 

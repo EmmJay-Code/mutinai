@@ -9,6 +9,7 @@
  *   npm run worker -- review show <id>
  *   npm run worker -- review dismiss <id> [--note text]
  *   npm run worker -- review link <id> <kind>:<slug>
+ *   npm run worker -- ingest bfcl [--dry-run]   (Berkeley Function Calling Leaderboard; see docs/benchmarks.md)
  *   npm run worker -- status
  *   npm run worker -- bootstrap                  (deploy step: migrate, seed once, ingest fixtures, drain jobs)
  *
@@ -23,6 +24,11 @@ import { createDatabase, ensureBenchmarkDefinitions, ensureQuantizationSchemes, 
 import {
   ADAPTERS,
   ARXIV_MIN_INTERVAL_MS,
+  BFCL_LEADERBOARD_URL,
+  BFCL_MODEL_CONFIG_URL,
+  importBfclRuns,
+  parseBfclLeaderboard,
+  parseBfclModelConfig,
   createArxivAdapter,
   createFeedAdapter,
   createGitHubAdapter,
@@ -147,7 +153,7 @@ async function buildAdapter(name: string, flags: IngestFlags): Promise<SourceAda
     log(`arxiv: ${arxivWatchlist.queries.length} curated quer${arxivWatchlist.queries.length === 1 ? 'y' : 'ies'}`);
     return createArxivAdapter({ client, queries: arxivWatchlist.queries });
   }
-  throw new Error(`unknown source "${name}". Fixture: ${Object.keys(ADAPTERS).join(', ')}. Live: ${LIVE_SOURCES.join(', ')}. Editorial: hardware-specs (--file)`);
+  throw new Error(`unknown source "${name}". Fixture: ${Object.keys(ADAPTERS).join(', ')}. Live: ${LIVE_SOURCES.join(', ')}. Editorial: hardware-specs (--file). Benchmarks: bfcl`);
 }
 
 async function resolveSince(sourceKey: string, value: string | undefined): Promise<Date | undefined> {
@@ -166,6 +172,7 @@ async function resolveSince(sourceKey: string, value: string | undefined): Promi
 // ─── Commands ────────────────────────────────────────────────────────────────
 
 async function ingest(name: string, flags: IngestFlags) {
+  if (name === 'bfcl') return ingestBfcl(flags);
   const names = name === 'all' || name === 'fixtures' ? Object.keys(ADAPTERS) : [name];
   for (const n of names) {
     const adapter = await buildAdapter(n, flags);
@@ -177,6 +184,37 @@ async function ingest(name: string, flags: IngestFlags) {
       : await runAdapter({ db, store, log }, adapter, ctx, { options });
     log(`${flags.dryRun ? 'DRY RUN (rolled back, nothing stored) ' : ''}run ${runId} ${n}: ${JSON.stringify(stats)}`);
   }
+}
+
+/**
+ * Berkeley Function Calling Leaderboard.
+ *
+ * Not a `SourceAdapter`: the pipeline promotes entities, and this writes benchmark runs for models the catalog
+ * already holds. It never creates a model. The database refuses the write outright if the source has not been
+ * cleared for redistribution, so nothing here needs to re-check the licence.
+ */
+async function ingestBfcl(flags: IngestFlags) {
+  const client = new HttpClient({ log, userAgent: process.env.MUTINAI_USER_AGENT || DEFAULT_USER_AGENT });
+  const table = await client.get(BFCL_LEADERBOARD_URL);
+  const configs = parseBfclModelConfig((await client.get(BFCL_MODEL_CONFIG_URL)).body);
+  const { runs, skipped } = parseBfclLeaderboard(table.body, configs);
+  log(`bfcl: ${runs.length} row(s) carry a Hugging Face repo id; ${skipped.length} skipped`);
+  for (const s of skipped) log(`  skipped ${s.displayName}: ${s.reason} (${s.detail})`);
+
+  const lastModified = table.headers.get('last-modified') ?? undefined;
+  const run = async (tx: typeof db) => importBfclRuns(tx, runs, { leaderboardLastModified: lastModified, log });
+  const stats = flags.dryRun
+    ? await db.transaction(async (tx) => { const r = await run(tx as typeof db); throw new DryRun(r); })
+        .catch((e: unknown) => { if (e instanceof DryRun) return e.stats; throw e; })
+    : await run(db);
+  for (const m of stats.unresolvedModels) log(`  not in the catalog: ${m.displayName} (${m.huggingFaceId})`);
+  const summary = { written: stats.written, replaced: stats.replaced, notInCatalog: stats.unresolvedModels.length, skipped: stats.skipped.length };
+  log(`${flags.dryRun ? 'DRY RUN (rolled back, nothing stored) ' : ''}bfcl: ${JSON.stringify(summary)}`);
+}
+
+/** Rolls a dry run back without reporting it as a failure. */
+class DryRun extends Error {
+  constructor(readonly stats: Awaited<ReturnType<typeof importBfclRuns>>) { super('dry run'); }
 }
 
 /** Cron entrypoint. Each enabled live source runs independently; one failing source does not stop the others. */

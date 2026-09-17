@@ -4,8 +4,9 @@ Mutinai does not publish "the score". It publishes **who measured what, how, and
 without those three things is not evidence, and is not shown.
 
 This document is the policy. The decision, the schema that enforces it and the outstanding gaps are in
-[ADR-0010](./adr/0010-benchmark-results.md). The schema exists; **no benchmark adapter has been built yet**, so
-nothing described here is currently ingesting. The policy was written before the sources were chosen, so that the
+[ADR-0010](./adr/0010-benchmark-results.md). **The Berkeley Function Calling Leaderboard is ingesting** as the first
+layer-2 source; LiveBench remains blocked on a licence answer. Everything else described here is still policy rather
+than practice. The policy was written before the sources were chosen, so that the
 choice was made against a rule rather than the rule fitted to whatever was easiest to take.
 
 ## The five layers of evidence
@@ -150,8 +151,9 @@ never averaged together.
 ## What is not decided yet
 
 - **Which independent sources.** Four candidates researched; see [benchmark-sources.md](./benchmark-sources.md).
-  LiveBench is the recommended first source, blocked on one licensing confirmation that has not been asked for yet;
-  BFCL is the fallback. SWE-bench's leaderboard results carry no licence and are link-only.
+  **BFCL is ingested** — the only one whose licence names the leaderboard statistics outright. LiveBench is blocked
+  pending [new-livebench#53](https://github.com/LiveBench/new-livebench/issues/53). SWE-bench's leaderboard results
+  carry no licence and are link-only; Aider is cleanly licensed but nearly a year stale.
 - **Normalisation across harnesses.** Whether two independent sources running "MMLU" at different few-shot counts are
   shown as one benchmark with two settings, or two benchmarks. The settings themselves are now structured, so the
   question is a display one rather than a storage one, but it is still unanswered.

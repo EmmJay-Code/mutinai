@@ -76,8 +76,9 @@ with a review queue for anything that cannot be placed safely. See [docs/live-in
 
 Benchmark numbers are layered by who measured them, ingested only where redistribution is permitted, and never merged
 into a single score. A result belongs to a run that records its subject, configuration, source and permission; summary
-surfaces pick one number by declared precedence rather than by taking the highest. No benchmark adapter has been built
-yet. See [docs/benchmarks.md](docs/benchmarks.md) for the policy,
+surfaces pick one number by declared precedence rather than by taking the highest. The Berkeley Function Calling
+Leaderboard is the first independent source ingested (`npm run worker -- ingest bfcl`); LiveBench stays blocked until
+its licence is confirmed. See [docs/benchmarks.md](docs/benchmarks.md) for the policy,
 [docs/benchmark-sources.md](docs/benchmark-sources.md) for the research on candidate independent sources, and
 [ADR-0010](docs/adr/0010-benchmark-results.md) for the schema.
 

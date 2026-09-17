@@ -91,23 +91,49 @@ adapter would need — is [benchmark-sources.md](benchmark-sources.md).
   `huggingface.co/livebench`, and none of those HF datasets declares a licence tag either.
 - **Status:** registered with `redistribution = 'unverified'` and `ingestion_enabled = false`, which the database
   enforces. Unblock only on an explicit statement from the maintainers that the Apache 2.0 grant covers
-  `public/table_*.csv`. The question has not been asked.
+  `public/table_*.csv`. **Asked 2026-09-17: [LiveBench/new-livebench#53](https://github.com/LiveBench/new-livebench/issues/53)**
+  — that issue is the pending decision, and the answer on it is what unblocks this source.
 
-### Berkeley Function Calling Leaderboard (BFCL)
-- **Data:** `ShishirPatil/gorilla`, `berkeley-function-call-leaderboard/`. Per-model, per-category score files are
-  written by `save_eval_results` with the header `{"accuracy", "correct_count", "total_count"}`; the published
-  leaderboard columns are listed in `bfcl_eval/constants/column_headers.py`. Score files are generated locally and
-  are not committed, so counts have to come from the published leaderboard.
-- **Categories:** `bfcl_eval/constants/category_mapping.py` — non-live, live, multi-turn, web search and memory,
-  plus irrelevance and relevance. Version prefix `BFCL_v4`.
-- **Overall accuracy is a mixture:** unweighted means within the non-live, multi-turn and agentic groups, a
-  sample-weighted mean within the live group, then `[10, 10, 10, 30, 40]` across non-live, live, irrelevance,
-  multi-turn and agentic — with a `TODO: adjust the weights` beside it. Recomputed from stored facts, never ingested.
-- **Function calling is a configuration.** `model_config.py` carries `qwen3-0.6b-FC` and `qwen3-0.6b` as separate
-  entries with `is_fc_model` true and false, the same `model_name`, and a `license` and `org` per entry.
+### Berkeley Function Calling Leaderboard (BFCL) — **ingested**
+
+The first independent benchmark source. Adapter: `packages/ingestion/src/adapters/bfcl.ts`; run it with
+`npm run worker -- ingest bfcl [--dry-run]`.
+
+- **Data:** `https://gorilla.cs.berkeley.edu/data_overall.csv` — plain CSV, no auth, no HTML scraping, whose columns
+  are `COLUMNS_OVERALL` in `bfcl_eval/constants/column_headers.py`. 109 model rows when read 2026-09-17, with
+  `Last-Modified: 13 Apr 2026` and an ETag for conditional requests. Per-group tables are published alongside it
+  (`data_live.csv`, `data_non_live.csv`, `data_multi_turn.csv`, `data_agentic.csv`) and are not read: the overall
+  table carries every column needed.
+- **Not the Hugging Face Space.** `gorilla-llm/berkeley-function-calling-leaderboard` is a three-file static stub
+  last touched in August 2024 and holds no data. Earlier notes pointing at a `data.csv` there were wrong.
+- **No counts are published.** The harness writes `{"accuracy", "correct_count", "total_count"}` score files
+  locally, but those are not committed and the published CSV has no count columns. So every BFCL result stores a
+  percentage with `sample_numerator` and `sample_count` null, rather than a numerator reverse-engineered from a
+  rounded percentage.
+- **Categories:** 18 scored columns are stored as subtasks. `Relevance Detection` is published but deliberately not
+  stored as a fact: `eval_runner_helper.py` computes `total_relevance` and then does not include it in the overall.
+  It is kept in the run's raw payload. Version prefix `BFCL_v4`, matching `bfcl_eval/data/BFCL_v4_*.json`.
+- **Overall accuracy is a mixture, and is recomputed rather than ingested:** unweighted means within the non-live,
+  multi-turn and agentic groups, a question-count-weighted mean within the live group, then `[10, 10, 10, 30, 40]`
+  across non-live, live, irrelevance, multi-turn and agentic — with a `TODO: adjust the weights` beside it. The live
+  weights are the fixed BFCL_v4 question counts (258, 1053, 16, 24), read from the committed dataset files, which
+  reproduces `calculate_weighted_accuracy` without inventing a per-model sample count. What the leaderboard printed
+  is kept on the run as `reported_rollup_value`; the recomputed value matches it to within 0.004 points.
+- **Non-live means four terms, not six.** `Simple AST` is already the mean of the Python, Java and JavaScript simple
+  categories, and the leaderboard publishes that sub-mean rather than its parts.
+- **Function calling is a configuration.** `model_config.py` carries `Qwen/Qwen3-32B-FC` and `Qwen/Qwen3-32B` with
+  `is_fc_model` true and false and the same `model_name`. They are one variant under two evaluation configurations.
+- **Model identity comes from `model_config.py`, not from the CSV.** The CSV names models by display name; only that
+  file carries the Hugging Face repo id. Display names are not unique — BFCL registers the same weights twice when
+  it evaluates them through a vendor API and from the Hub — so a row resolves only when its candidates agree on a
+  single repo id. A row with no repo id, or with two, is skipped and reported; nothing is matched by name similarity.
 - **Not canonicalized:** rank, total cost, latency mean/standard deviation/95th percentile, format-sensitivity
-  spread. These go in run provenance.
-- **Licence:** Apache-2.0 at the repository root; attribution required.
+  spread, organization and licence strings. These go in run provenance.
+- **Licence:** Apache-2.0 at the repository root, and the leaderboard README grants the statistics by name: "All the
+  leaderboard statistics, and data used to train the models are released under Apache 2.0." Attribution required;
+  the credit line is on the `bfcl-leaderboard` source row. Maintainer contact: `huanzhimao@berkeley.edu`.
+- **Freshness:** the gorilla repository was last pushed 2026-04-13 and the published table carries the same date.
+  BFCL is updating more slowly than it did; that is a reason to re-check, not to distrust what it published.
 
 ### Aider polyglot
 - **Data:** `Aider-AI/aider`, `aider/website/_data/polyglot_leaderboard.yml`. One record per leaderboard entry:

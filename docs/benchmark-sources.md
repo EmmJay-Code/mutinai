@@ -50,10 +50,10 @@ GitHub. Items still resting on that limitation are marked *unverified* below rat
 | **Harness version** | Not in the CSV; the release date pins the question set | Agent + scaffold named in `tags`; its version is in the entry folder name (e.g. `mini-v2.4.6`) | **Yes — `versions` and `commit_hash`**, the best of the four | BFCL version only |
 | **Prompt / few-shot / config** | Baked into the model string (`-thinking-64k-high-effort`) rather than recorded in fields | `tags.system.attempts` (e.g. 1); the scaffold's prompting lives in the submitter's repo | **`edit_format`, `editor_model`, `editor_edit_format`, `reasoning_effort`, `command`** — the full invocation | `is_fc_model` (function-calling vs prompt mode); `Format Sensitivity` columns measure prompt-format variance |
 | **Hardware / runtime** | None | None | None | None (API and local models both run; hardware not recorded) |
-| **Sample count / uncertainty** | Question counts only in the optional cost file (`nq_<subtask>`). **No stderr** | `len(resolved)` and the split size give an exact numerator/denominator. No stderr | **`pass_num_1/2` and `test_cases`/`total_tests`** — exact numerator and denominator. No stderr | `correct_count` / `total_count` in the score files. `Latency Mean / Std / 95th` and `Format Sensitivity Standard Deviation` are about latency and prompt sensitivity, **not** score uncertainty. No score stderr |
+| **Sample count / uncertainty** | Question counts only in the optional cost file (`nq_<subtask>`). **No stderr** | `len(resolved)` and the split size give an exact numerator/denominator. No stderr | **`pass_num_1/2` and `test_cases`/`total_tests`** — exact numerator and denominator. No stderr | **None published.** `correct_count`/`total_count` exist only in locally generated score files that are not committed; the published CSV has no count columns. Per-category question counts are fixed properties of the committed BFCL_v4 dataset. `Latency` and `Format Sensitivity` columns are about latency and prompt sensitivity, **not** score uncertainty. No stderr |
 | **History kept** | **Yes** — every release's CSV stays in `public/` | **Yes** — every submission directory stays; artifacts moved to submitters' own repos mid-2026, older ones point at `s3://swe-bench-submissions/` | **Yes** — git history of one file | Yes, in repository history |
 | **Change frequency** | **High.** Score commits through 2026-09-16; new question releases roughly quarterly | **Moderate, active.** Latest submissions 2026-09-02/03 | **Stale.** Last change to the leaderboard file: **2025-10-04**, ~11 months ago | **Slowing.** Last commit to the leaderboard directory: **2026-03-23**, ~6 months ago |
-| **Fetchable without HTML scraping** | **Yes, verified** — plain CSV/JSON over `raw.githubusercontent.com`, no auth | **Yes, verified** — YAML/JSON over `raw.githubusercontent.com`; directory enumeration needs the GitHub API or the repo cloned | **Yes, verified** — one YAML file | **Yes** — the harness, columns and category mapping are in the GitHub repo; the rendered leaderboard table is published from a Hugging Face Space, **unverified** |
+| **Fetchable without HTML scraping** | **Yes, verified** — plain CSV/JSON over `raw.githubusercontent.com`, no auth | **Yes, verified** — YAML/JSON over `raw.githubusercontent.com`; directory enumeration needs the GitHub API or the repo cloned | **Yes, verified** — one YAML file | **Yes, verified 2026-09-17** — `https://gorilla.cs.berkeley.edu/data_overall.csv`, plain CSV over HTTPS with `Last-Modified` and an ETag. The Hugging Face Space named in the first pass holds no data: it is a three-file static stub last touched August 2024 |
 
 ### Licence notes, stated conservatively
 
@@ -147,8 +147,9 @@ Why it is the right first source:
 **The condition.** The score tables live in `LiveBench/new-livebench`, which has no LICENSE file. The Apache 2.0 grant
 is in the harness repo's datasheet and describes the question set distributed on Hugging Face. That gap must be closed
 in writing — one issue on `LiveBench/new-livebench` asking whether the datasheet's grant covers `public/table_*.csv`
-and what attribution they want — before an adapter writes a single row. **That question has not been asked yet**; a
-search of all three repositories found no existing licence or redistribution issue. The source is registered with
+and what attribution they want — before an adapter writes a single row. **Asked 2026-09-17:
+[LiveBench/new-livebench#53](https://github.com/LiveBench/new-livebench/issues/53)**, which is the durable link to
+this pending decision. A search of all three repositories beforehand found no existing licence or redistribution issue. The source is registered with
 `redistribution = 'unverified'` and `ingestion_enabled = false`, and the database refuses runs against it, so the
 condition is enforced rather than remembered.
 
@@ -168,9 +169,13 @@ Recorded here so the next sitting does not re-derive it:
 - **LiveBench** — one run per (model string, release). Split the configuration out of the model string rather than
   creating variants. 23 results per run, one per task, each against a `benchmark_subtask`; `rollup_method` is
   `mean_of_subtasks` at both levels. Sample counts only if the optional cost file is taken.
-- **BFCL** — one run per (model, version), with `prompt_mode` distinguishing the `-FC` entries from the plain ones.
-  Results per category, with `correct_count`/`total_count` where the score files are available. The group weighting
-  is `weighted_subtasks` over the groups and a mix of `mean_of_subtasks` and `pooled_samples` within them.
+- **BFCL** — **built**; see `packages/ingestion/src/adapters/bfcl.ts` and
+  [sources.md](./sources.md#benchmark-result-sources). One run per (model, mode) per dataset generation, keyed
+  `bfcl:BFCL_v4:<model_config key>`, with `prompt_mode` distinguishing the `-FC` entries from the plain ones. 18
+  category results per run and no counts, because none are published. The group weighting is `weighted_subtasks`
+  across the groups, `mean_of_subtasks` within all of them except live, which is `weighted_subtasks` over the fixed
+  BFCL_v4 question counts. Two first-pass assumptions were wrong and are corrected there: non-live means four terms
+  rather than six, and relevance is excluded from the overall.
 - **Aider** — one run per record, keyed by `dirname`. `pass_rate_1` and `pass_rate_2` are two runs differing by
   `attempts`, not two metrics. No subtasks, so no rollup: the result is the whole-benchmark fact.
 
@@ -216,5 +221,10 @@ models by *their* licence, not about the leaderboard's own.
 > We are happy with any answer, including no. We just need it in writing before we store anything. Thanks for
 > maintaining the benchmark.
 
+**Filed 2026-09-17 as [LiveBench/new-livebench#53](https://github.com/LiveBench/new-livebench/issues/53)**, with the
+repository link dropped because Mutinai's own repository is private. That issue is the record of this decision; its
+URL is also on the `livebench-leaderboard` row's `permission_note`, so it travels with the data.
+
 A "yes" moves the source to `redistribution = 'attribution_required'` with their credit line and
-`ingestion_enabled = true`. Anything else, or silence, and LiveBench stays blocked and BFCL becomes the first source.
+`ingestion_enabled = true`. Anything else, or silence, and LiveBench stays blocked. BFCL is the first source
+regardless, since it was already cleared.

@@ -52,6 +52,24 @@ export {
   type HardwareSpecsAdapterOptions,
 } from './adapters/hardware-specs';
 export { canonicalUrl, createFeedAdapter, excerpt, FEEDS_SOURCE, normalizeFeedEntry, parseFeed, type FeedConfig, type FeedEntrySnapshot } from './adapters/feed';
+export {
+  BFCL_CITATION_URL,
+  BFCL_LEADERBOARD_URL,
+  BFCL_MODEL_CONFIG_URL,
+  BFCL_SCORE_COLUMNS,
+  BFCL_VERSION,
+  parseBfclLeaderboard,
+  parseBfclModelConfig,
+  parsePercent,
+  resolveBfclModel,
+  type BfclModelConfig,
+  type BfclParseResult,
+  type BfclResolution,
+  type BfclRun,
+  type BfclSkip,
+  type BfclSkipReason,
+} from './adapters/bfcl';
+export { bfclRollupReconciliation, importBfclRuns, type BfclImportOptions, type BfclImportStats } from './adapters/bfcl-import';
 
 import type { SourceAdapter } from './adapter';
 import { createFixtureGitHubAdapter } from './adapters/github';
