@@ -13,7 +13,8 @@ import {
   type RelationPredicate,
   type VariantKind,
 } from '@mutinai/domain';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { Executor } from './client';
 import * as s from './schema';
 
@@ -214,5 +215,111 @@ export async function recordPriceObservation(db: Executor, input: PriceObservati
       note: input.note ?? null,
     })
     .returning({ id: s.priceObservation.id });
+  return row!.id;
+}
+
+export interface EvaluationConfigInput {
+  /** Display only, derived from the fields below; never parsed back. */
+  label?: string;
+  promptMode?: (typeof s.evaluationPromptMode.enumValues)[number];
+  shots?: number;
+  chainOfThought?: boolean;
+  reasoningEnabled?: boolean;
+  reasoningEffort?: string;
+  thinkingTokenBudget?: number;
+  attempts?: number;
+  harnessConfig?: Record<string, string | number | boolean>;
+}
+
+/**
+ * Resolves how a subject was run to a shared configuration row. Configurations are interned rather than copied, so
+ * "Qwen3-0.6B (FC)" and "Qwen3-0.6B (Prompt)" stay one model under two configurations instead of becoming two
+ * models. The uniqueness key covers every structured field including `harness_config`, so nothing collapses.
+ */
+export async function ensureEvaluationConfig(db: Executor, input: EvaluationConfigInput): Promise<string> {
+  const row = {
+    promptMode: input.promptMode ?? ('unspecified' as const),
+    shots: input.shots ?? null,
+    chainOfThought: input.chainOfThought ?? null,
+    reasoningEnabled: input.reasoningEnabled ?? null,
+    reasoningEffort: input.reasoningEffort ?? null,
+    thinkingTokenBudget: input.thinkingTokenBudget ?? null,
+    attempts: input.attempts ?? null,
+    harnessConfig: input.harnessConfig ?? {},
+  };
+  const match = and(
+    eq(s.evaluationConfig.promptMode, row.promptMode),
+    isNullOr(s.evaluationConfig.shots, row.shots),
+    isNullOr(s.evaluationConfig.chainOfThought, row.chainOfThought),
+    isNullOr(s.evaluationConfig.reasoningEnabled, row.reasoningEnabled),
+    isNullOr(s.evaluationConfig.reasoningEffort, row.reasoningEffort),
+    isNullOr(s.evaluationConfig.thinkingTokenBudget, row.thinkingTokenBudget),
+    isNullOr(s.evaluationConfig.attempts, row.attempts),
+    sql`${s.evaluationConfig.harnessConfig} = ${JSON.stringify(row.harnessConfig)}::jsonb`,
+  );
+  const [existing] = await db.select({ id: s.evaluationConfig.id }).from(s.evaluationConfig).where(match);
+  if (existing) return existing.id;
+  const [created] = await db
+    .insert(s.evaluationConfig)
+    .values({ label: input.label ?? null, ...row })
+    .onConflictDoNothing()
+    .returning({ id: s.evaluationConfig.id });
+  if (created) return created.id;
+  const [raced] = await db.select({ id: s.evaluationConfig.id }).from(s.evaluationConfig).where(match);
+  return raced!.id;
+}
+
+const isNullOr = (column: AnyPgColumn, value: unknown) => (value === null ? isNull(column) : eq(column, value as never));
+
+export interface BenchmarkRunInput {
+  benchmarkId: string;
+  variantId?: string;
+  artifactId?: string;
+  configId: string;
+  resultSourceId: string;
+  origin: (typeof s.resultOrigin.enumValues)[number];
+  environmentId?: string;
+  benchmarkVersion?: string;
+  harnessName?: string;
+  harnessVersion?: string;
+  harnessCommit?: string;
+  measuredOn?: string;
+  citationUrl?: string;
+  reportedRollupValue?: number;
+  raw?: Record<string, unknown>;
+  dedupeKey?: string;
+  sourceRecordId?: string;
+}
+
+/**
+ * Records one evaluation of one subject. Refused by the database when the source's redistribution permission has
+ * not been established, which is how a source stays blocked without an adapter having to remember.
+ */
+export async function insertRun(db: Executor, input: BenchmarkRunInput): Promise<string> {
+  if (Boolean(input.variantId) === Boolean(input.artifactId)) {
+    throw new OntologyError(['A benchmark run measures either a variant or an artifact, not both and not neither']);
+  }
+  const [row] = await db
+    .insert(s.benchmarkRun)
+    .values({
+      benchmarkId: input.benchmarkId,
+      variantId: input.variantId ?? null,
+      artifactId: input.artifactId ?? null,
+      configId: input.configId,
+      resultSourceId: input.resultSourceId,
+      origin: input.origin,
+      environmentId: input.environmentId ?? null,
+      benchmarkVersion: input.benchmarkVersion ?? null,
+      harnessName: input.harnessName ?? null,
+      harnessVersion: input.harnessVersion ?? null,
+      harnessCommit: input.harnessCommit ?? null,
+      measuredOn: input.measuredOn ?? null,
+      citationUrl: input.citationUrl ?? null,
+      reportedRollupValue: input.reportedRollupValue ?? null,
+      raw: input.raw ?? {},
+      dedupeKey: input.dedupeKey ?? null,
+      sourceRecordId: input.sourceRecordId ?? null,
+    })
+    .returning({ id: s.benchmarkRun.id });
   return row!.id;
 }

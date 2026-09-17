@@ -55,3 +55,66 @@ where noted. Re-check limits before raising volumes.
   The Hugging Face blog feed carries its whole history (861 entries), so each feed is capped at its 20 newest entries.
 - **Stored:** feed key, entry id, title, canonical URL (tracking parameters removed), author, categories, dates, a
   280-character plain-text excerpt. Articles are never republished.
+
+## Benchmark result sources (researched 2026-09-17)
+
+Read for field shapes and licences before any adapter was written. Nothing below is ingested yet; the registry
+lives in `packages/db/src/reference.ts` and the schema is described in
+[ADR-0010](adr/0010-benchmark-results.md).
+
+### LiveBench — **blocked**
+- **Data:** `LiveBench/livebench.github.io`, `public/table_<date>.csv` (a `model` column plus one column per task,
+  scored 0–100) with `public/categories_<date>.json` mapping categories to those task columns. The 2026-06-25 table
+  has 23 task columns under 7 categories and 28 model rows.
+- **No averages in the file.** Category averages and the global average are computed by the site: a category is the
+  mean of its tasks, the global average the mean of the categories.
+- **Configuration is in the model string.** Entries like `claude-opus-4-5-20251101-thinking-64k-high-effort` are one
+  model under one configuration. An adapter must split them, not create a variant.
+- **No sample counts** are published, so numerator and count stay null.
+- **Licence:** the harness repository `LiveBench/LiveBench` is Apache-2.0. The leaderboard repository
+  `LiveBench/livebench.github.io` has no `LICENSE` file. The path quoted in earlier notes,
+  `new-livebench/public/table_*.csv`, is not present on `main` in either repository today; the tables are at
+  `public/table_*.csv` in the site repository.
+- **Status:** registered with `redistribution = 'unverified'` and `ingestion_enabled = false`, which the database
+  enforces. Unblock only on an explicit statement from the maintainers that the Apache 2.0 grant covers
+  `public/table_*.csv`.
+
+### Berkeley Function Calling Leaderboard (BFCL)
+- **Data:** `ShishirPatil/gorilla`, `berkeley-function-call-leaderboard/`. Per-model, per-category score files are
+  written by `save_eval_results` with the header `{"accuracy", "correct_count", "total_count"}`; the published
+  leaderboard columns are listed in `bfcl_eval/constants/column_headers.py`. Score files are generated locally and
+  are not committed, so counts have to come from the published leaderboard.
+- **Categories:** `bfcl_eval/constants/category_mapping.py` — non-live, live, multi-turn, web search and memory,
+  plus irrelevance and relevance. Version prefix `BFCL_v4`.
+- **Overall accuracy is a mixture:** unweighted means within the non-live, multi-turn and agentic groups, a
+  sample-weighted mean within the live group, then `[10, 10, 10, 30, 40]` across non-live, live, irrelevance,
+  multi-turn and agentic — with a `TODO: adjust the weights` beside it. Recomputed from stored facts, never ingested.
+- **Function calling is a configuration.** `model_config.py` carries `qwen3-0.6b-FC` and `qwen3-0.6b` as separate
+  entries with `is_fc_model` true and false, the same `model_name`, and a `license` and `org` per entry.
+- **Not canonicalized:** rank, total cost, latency mean/standard deviation/95th percentile, format-sensitivity
+  spread. These go in run provenance.
+- **Licence:** Apache-2.0 at the repository root; attribution required.
+
+### Aider polyglot
+- **Data:** `Aider-AI/aider`, `aider/website/_data/polyglot_leaderboard.yml`. One record per leaderboard entry:
+  `dirname`, `model`, `edit_format`, `commit_hash`, `versions`, `date`, `test_cases`, `pass_rate_1`, `pass_rate_2`,
+  `pass_num_1`, `pass_num_2`, `percent_cases_well_formed`, `command`, `seconds_per_case`, `total_cost`, and harness
+  counters (`error_outputs`, `num_malformed_responses`, `num_with_malformed_responses`, `user_asks`,
+  `lazy_comments`, `syntax_errors`, `indentation_errors`, `exhausted_context_windows`, `test_timeouts`). Some
+  records also carry `reasoning_effort`, `thinking_tokens`, `prompt_tokens`, `completion_tokens`, `editor_model`
+  and `editor_edit_format`.
+- **Two numbers per entry.** `pass_rate_1` and `pass_rate_2` are one session at one attempt and at two. Stored as
+  two runs differing by configuration, not as two metrics and not as two models. The leaderboard's headline is the
+  two-attempt figure.
+- **Counts are published:** `pass_num_2` of `test_cases`.
+- **No breakdown.** Despite covering six languages, the file publishes no per-language scores, so there are no
+  subtasks.
+- **`dirname` is a natural key** for idempotent re-ingestion.
+- **Licence:** Apache-2.0 (`LICENSE.txt`); attribution required.
+
+### SWE-bench — not ingested
+SWE-bench's leaderboard is a registry of externally produced submissions: each entry is a result someone else ran
+with their own scaffold and submitted, not a measurement the benchmark's maintainers made. It is therefore not a
+canonical independent-result source, and is not registered. If it is ever ingested it belongs under origin
+`submitted_registry`, which ranks below an independent run and below our own measurement, and each entry's
+submitter and scaffold would have to be recorded as part of its provenance.

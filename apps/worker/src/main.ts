@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { createDatabase, ensureQuantizationSchemes, FIXTURE_SOURCE_KEY, jobs, linkExternalId, REPO_ROOT, requireEnv, runMigrations, schema, seedDatabase } from '@mutinai/db';
+import { createDatabase, ensureBenchmarkDefinitions, ensureQuantizationSchemes, ensureResultSources, FIXTURE_SOURCE_KEY, jobs, linkExternalId, REPO_ROOT, requireEnv, runMigrations, schema, seedDatabase } from '@mutinai/db';
 import {
   ADAPTERS,
   ARXIV_MIN_INTERVAL_MS,
@@ -302,6 +302,11 @@ async function bootstrap() {
   // Reference vocabulary added to the repository after a database was seeded (e.g. new quantization schemes).
   const { created } = await ensureQuantizationSchemes(db);
   if (created) log(`added ${created} quantization scheme(s)`);
+  // Result sources and benchmark definitions are refreshed, but a source is never enabled for ingestion by a deploy.
+  const sources = await ensureResultSources(db);
+  if (sources.created) log(`added ${sources.created} result source(s)`);
+  const benchmarks = await ensureBenchmarkDefinitions(db);
+  if (benchmarks.created) log(`added ${benchmarks.created} benchmark definition(s)`);
   await ingest('fixtures', NO_FLAGS);
   await work(true);
   log('bootstrap complete');

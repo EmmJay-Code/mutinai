@@ -17,7 +17,7 @@ const AXIS_OF: Record<string, string> = Object.fromEntries(CAPABILITY_AXES.flatM
  */
 export default async function BenchmarksPage() {
   const db = getDb();
-  const [benchmarks, best] = await Promise.all([catalog.listBenchmarks(db), catalog.listBestBenchmarkScores(db)]);
+  const [benchmarks, best] = await Promise.all([catalog.listBenchmarks(db), catalog.listBenchmarkScores(db)]);
   const withResults = benchmarks.filter((b) => b.resultCount > 0);
   const frontiers = Object.fromEntries(
     (await Promise.all(withResults.filter((b) => b.kind === 'capability').map(async (b) => [b.slug, await catalog.benchmarkFrontier(db, b.slug)] as const))).filter(([, f]) => f),
