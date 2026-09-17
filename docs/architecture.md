@@ -77,11 +77,14 @@ See [ADR-0002](./adr/0002-ontology.md) for the ontology and
    projects need categorisation. Decide who reviews `unresolved` source records and build that queue UI.
 4. **Identity resolution policy.** When fuzzy matches (not just identifiers/exact aliases) are acceptable, and
    how merges/splits of mistaken entities are recorded without losing provenance.
-5. **Canonical benchmark policy.** Decided: benchmark evidence is layered (developer-reported, independent,
-   community, Mutinai-run, proprietary), redistribution rights gate ingestion, and conflicting reports coexist
-   rather than merging. Policy in [benchmarks.md](./benchmarks.md), decision and schema gaps in
-   [ADR-0010](./adr/0010-benchmark-evidence.md). Choosing the independent sources, and the migration their shape
-   implies, are still open.
+5. **Canonical benchmark policy.** Decided and implemented. Benchmark evidence is layered (developer-reported,
+   independent, community, Mutinai-run, proprietary); redistribution rights gate ingestion and are enforced by the
+   database; conflicting reports coexist rather than merging; and summary surfaces select by declared precedence
+   instead of taking the highest number. Policy in [benchmarks.md](./benchmarks.md), schema and the remaining gaps in
+   [ADR-0010](./adr/0010-benchmark-results.md), source research in
+   [benchmark-sources.md](./benchmark-sources.md). **Still open:** no adapter has been built, the first independent
+   source (LiveBench) is blocked pending a written licence confirmation, and how evaluation settings are normalised
+   across harnesses for display is undecided.
 6. **Community verification rules.** What makes a submission "verified" (moderator review, reproduction by
    another member, statistical agreement) and how verified runs weight into measured speeds.
 7. **Scheduling and freshness.** Polling vs. webhooks per source, cursor storage, and retention/pruning of

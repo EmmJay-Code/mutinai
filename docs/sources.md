@@ -56,11 +56,15 @@ where noted. Re-check limits before raising volumes.
 - **Stored:** feed key, entry id, title, canonical URL (tracking parameters removed), author, categories, dates, a
   280-character plain-text excerpt. Articles are never republished.
 
-## Benchmark result sources (researched 2026-09-17)
+## Benchmark result sources
 
-Read for field shapes and licences before any adapter was written. Nothing below is ingested yet; the registry
-lives in `packages/db/src/reference.ts` and the schema is described in
+Researched 2026-09-17. Read for field shapes and licences before any adapter was written. Nothing below is ingested
+yet; the registry lives in `packages/db/src/reference.ts` and the schema is described in
 [ADR-0010](adr/0010-benchmark-results.md).
+
+This section is the registered state of each source. The policy that admits or refuses a source is
+[benchmarks.md](benchmarks.md), and the full research record — including the fields each source publishes and what an
+adapter would need — is [benchmark-sources.md](benchmark-sources.md).
 
 ### LiveBench — **blocked**
 - **Data:** `LiveBench/livebench.github.io`, `public/table_<date>.csv` (a `model` column plus one column per task,

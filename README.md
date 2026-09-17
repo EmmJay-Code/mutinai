@@ -64,7 +64,7 @@ Read [docs/architecture.md](docs/architecture.md) first, then the ADRs:
 7. [Public preview deployment](docs/adr/0007-preview-deployment.md)
 8. [Live source ingestion](docs/adr/0008-live-ingestion.md)
 9. [Freshness and publisher accounts](docs/adr/0009-freshness-and-publisher-accounts.md)
-10. [Layered benchmark evidence](docs/adr/0010-benchmark-evidence.md)
+10. [Benchmark evidence and results](docs/adr/0010-benchmark-results.md)
 
 ## Live data
 
@@ -74,9 +74,12 @@ with a review queue for anything that cannot be placed safely. See [docs/live-in
 
 ## Benchmarks
 
-Benchmark numbers are layered by who measured them, ingested only where redistribution is permitted, and never
-merged into a single score. See [docs/benchmarks.md](docs/benchmarks.md) for the policy and
-[docs/benchmark-sources.md](docs/benchmark-sources.md) for the research on candidate independent sources.
+Benchmark numbers are layered by who measured them, ingested only where redistribution is permitted, and never merged
+into a single score. A result belongs to a run that records its subject, configuration, source and permission; summary
+surfaces pick one number by declared precedence rather than by taking the highest. No benchmark adapter has been built
+yet. See [docs/benchmarks.md](docs/benchmarks.md) for the policy,
+[docs/benchmark-sources.md](docs/benchmark-sources.md) for the research on candidate independent sources, and
+[ADR-0010](docs/adr/0010-benchmark-results.md) for the schema.
 
 ## Deployment
 
