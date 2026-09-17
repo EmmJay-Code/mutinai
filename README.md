@@ -63,12 +63,19 @@ Read [docs/architecture.md](docs/architecture.md) first, then the ADRs:
 6. [Compatibility engine](docs/adr/0006-compatibility-engine.md)
 7. [Public preview deployment](docs/adr/0007-preview-deployment.md)
 8. [Live source ingestion](docs/adr/0008-live-ingestion.md)
+9. [Freshness and publisher accounts](docs/adr/0009-freshness-and-publisher-accounts.md)
+10. [Layered benchmark evidence](docs/adr/0010-benchmark-evidence.md)
 
 ## Live data
 
 Live adapters for the Hugging Face Hub, GitHub, official feeds and arXiv run through the same pipeline as the fixtures,
 with a review queue for anything that cannot be placed safely. See [docs/live-ingestion.md](docs/live-ingestion.md),
 [docs/sources.md](docs/sources.md), [docs/ai-enrichment.md](docs/ai-enrichment.md) and [docs/hardware-data.md](docs/hardware-data.md).
+
+## Benchmarks
+
+Benchmark numbers are layered by who measured them, ingested only where redistribution is permitted, and never
+merged into a single score. See [docs/benchmarks.md](docs/benchmarks.md).
 
 ## Deployment
 

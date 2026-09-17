@@ -77,8 +77,11 @@ See [ADR-0002](./adr/0002-ontology.md) for the ontology and
    projects need categorisation. Decide who reviews `unresolved` source records and build that queue UI.
 4. **Identity resolution policy.** When fuzzy matches (not just identifiers/exact aliases) are acceptable, and
    how merges/splits of mistaken entities are recorded without losing provenance.
-5. **Canonical benchmark policy.** Which leaderboards/sources are trusted for capability results, how
-   evaluation settings are normalized, and how conflicting reports are displayed.
+5. **Canonical benchmark policy.** Decided: benchmark evidence is layered (developer-reported, independent,
+   community, Mutinai-run, proprietary), redistribution rights gate ingestion, and conflicting reports coexist
+   rather than merging. Policy in [benchmarks.md](./benchmarks.md), decision and schema gaps in
+   [ADR-0010](./adr/0010-benchmark-evidence.md). Choosing the independent sources, and the migration their shape
+   implies, are still open.
 6. **Community verification rules.** What makes a submission "verified" (moderator review, reproduction by
    another member, statistical agreement) and how verified runs weight into measured speeds.
 7. **Scheduling and freshness.** Polling vs. webhooks per source, cursor storage, and retention/pruning of
