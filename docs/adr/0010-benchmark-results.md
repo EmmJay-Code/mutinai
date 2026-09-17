@@ -27,7 +27,8 @@ wrongly.
 - **Nothing recorded what we are allowed to redistribute.** BFCL sits inside `ShishirPatil/gorilla`, Apache-2.0 at
   its root, so the grant covers the scores. Aider's leaderboard file sits inside `Aider-AI/aider`, also Apache-2.0.
   LiveBench is the awkward one: the harness repository is Apache-2.0, but the leaderboard tables are published from
-  `LiveBench/livebench.github.io`, which carries no licence file at all.
+  `LiveBench/new-livebench` — the repository whose `gh-pages` branch serves `livebench.ai` — which carries no licence
+  file at all.
 - **Evaluation settings were one free-text column.** `'5-shot CoT'`, `'thinking mode'`. Meanwhile the sources encode
   configuration in the model's name: LiveBench has `claude-opus-4-5-20251101-thinking-64k-high-effort`, BFCL has
   `qwen3-0.6b-FC` and `qwen3-0.6b` as separate entries for one model. Mapping those to model variants would have
@@ -178,7 +179,8 @@ closed that was not actually implemented.
 
 1. **The LiveBench licence answer.** Registered, `redistribution = 'unverified'`, ingestion disabled and enforced.
    Unblock only on an explicit statement from the maintainers that the Apache-2.0 grant covers
-   `public/table_*.csv` in `LiveBench/livebench.github.io`. Not yet asked.
+   `public/table_*.csv` in `LiveBench/new-livebench`. Not yet asked — the wording to send and where to send it are in
+   [benchmark-sources.md](../benchmark-sources.md#7-the-livebench-licensing-question-where-to-send-it-and-what-to-say).
 2. **The first adapter.** BFCL is the fallback if the LiveBench answer does not come, and is the only one of the four
    whose licence explicitly names the leaderboard statistics.
 3. **G2 and G6** are cheap and should land with the first adapter, which is the change that makes them matter.

@@ -51,12 +51,12 @@ export const resultSources = [
     key: 'livebench-leaderboard',
     name: 'LiveBench leaderboard',
     homepageUrl: 'https://livebench.ai',
-    datasetUrl: 'https://github.com/LiveBench/livebench.github.io/tree/main/public',
+    datasetUrl: 'https://github.com/LiveBench/new-livebench/tree/main/public',
     redistribution: 'unverified',
     ingestionEnabled: false,
     priority: 50,
     permissionNote:
-      'Blocked. The harness repository (LiveBench/LiveBench) is Apache-2.0, but the leaderboard tables are published from LiveBench/livebench.github.io, which carries no licence file of its own — so the Apache grant demonstrably covers the code, and not demonstrably the tables. Unblock only on an explicit statement from the maintainers that Apache-2.0 covers public/table_*.csv; then set redistribution to attribution_required with the credit line, and enable.',
+      'Blocked. The harness repository (LiveBench/LiveBench) carries an Apache-2.0 LICENSE, but the leaderboard tables are published from LiveBench/new-livebench — the repository whose gh-pages branch serves livebench.ai — which carries no licence file of its own. The datasheet grant describes the question set on Hugging Face, not the score tables, so Apache demonstrably covers the code and the questions, and not demonstrably the tables. Unblock only on an explicit statement from the maintainers that Apache-2.0 covers public/table_*.csv; then set redistribution to attribution_required with the credit line, and enable.',
   },
   {
     key: 'bfcl-leaderboard',

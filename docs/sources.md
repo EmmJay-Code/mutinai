@@ -67,21 +67,31 @@ This section is the registered state of each source. The policy that admits or r
 adapter would need — is [benchmark-sources.md](benchmark-sources.md).
 
 ### LiveBench — **blocked**
-- **Data:** `LiveBench/livebench.github.io`, `public/table_<date>.csv` (a `model` column plus one column per task,
-  scored 0–100) with `public/categories_<date>.json` mapping categories to those task columns. The 2026-06-25 table
-  has 23 task columns under 7 categories and 28 model rows.
+- **Data:** `LiveBench/new-livebench`, `public/table_<date>.csv` (a `model` column plus one column per task, scored
+  0–100) with `public/categories_<date>.json` mapping categories to those task columns. The 2026-06-25 table has 23
+  task columns under 7 categories and 58 model rows. 11 releases, `2024_06_24` to `2026_06_25`.
+- **This is the live publisher, verified 2026-09-17.** Two repositories in the org carry a `public/table_*.csv` set.
+  `new-livebench` is the one whose `gh-pages` branch has `CNAME = livebench.ai`, and the table served at
+  `https://livebench.ai/table_2026_06_25.csv` is byte-identical to its copy. `livebench.github.io` is the legacy site
+  repo: its Pages serve `livebench.github.io`, and its tables were last updated 2026-07-06 against 2026-09-16.
 - **No averages in the file.** Category averages and the global average are computed by the site: a category is the
   mean of its tasks, the global average the mean of the categories.
 - **Configuration is in the model string.** Entries like `claude-opus-4-5-20251101-thinking-64k-high-effort` are one
-  model under one configuration. An adapter must split them, not create a variant.
-- **No sample counts** are published, so numerator and count stay null.
-- **Licence:** the harness repository `LiveBench/LiveBench` is Apache-2.0. The leaderboard repository
-  `LiveBench/livebench.github.io` has no `LICENSE` file. The path quoted in earlier notes,
-  `new-livebench/public/table_*.csv`, is not present on `main` in either repository today; the tables are at
-  `public/table_*.csv` in the site repository.
+  model under one configuration. An adapter must split them, not create a variant. The source agrees: `modelLinks.js`
+  groups effort variants under a base model via a `variants` list, which `getVariantGroup` resolves.
+- **Model identity is good.** `src/Table/modelLinks.js` keys every table row; 56 of 58 rows resolve (46 directly, 10
+  as effort variants), and 18 of the 19 open-weight rows carry an explicit `huggingface:` repo URL. A model with no
+  entry is hidden from the leaderboard.
+- **No sample counts** in `table_*.csv`, so numerator and count stay null. The optional `cost_<date>.csv`, present for
+  2026-06-25 in `new-livebench` only, carries `nq_<subtask>` question counts.
+- **Licence:** `LiveBench/LiveBench` carries an Apache-2.0 `LICENSE`, prefaced "The original LICENSE from
+  FastChat is copied below" (GitHub reads it as `NOASSERTION`). `new-livebench` has **no licence file**, and neither
+  does `livebench.github.io`. The datasheet's grant — "distributed under the Apache License 2.0", "no copyrights on
+  the data", "no fees or restrictions" — sits in a section about distributing *the question set* via
+  `huggingface.co/livebench`, and none of those HF datasets declares a licence tag either.
 - **Status:** registered with `redistribution = 'unverified'` and `ingestion_enabled = false`, which the database
   enforces. Unblock only on an explicit statement from the maintainers that the Apache 2.0 grant covers
-  `public/table_*.csv`.
+  `public/table_*.csv`. The question has not been asked.
 
 ### Berkeley Function Calling Leaderboard (BFCL)
 - **Data:** `ShishirPatil/gorilla`, `berkeley-function-call-leaderboard/`. Per-model, per-category score files are
