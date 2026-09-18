@@ -5,7 +5,7 @@ the per-source findings (limits, terms, what is stored) are in [sources.md](sour
 
 | Source | Command | Selection | Credentials |
 |---|---|---|---|
-| Hugging Face Hub | `ingest huggingface` | first-party authors + derivatives of known variants (`apps/worker/sources/huggingface.json`), or `--repos`/`--authors` | optional `HUGGINGFACE_TOKEN` |
+| Hugging Face Hub | `ingest huggingface` | curated first-party repositories + their authors + derivatives of known variants (`apps/worker/sources/huggingface.json`), or `--repos`/`--authors` | optional `HUGGINGFACE_TOKEN` |
 | GitHub | `ingest github` | projects already in the catalog, or `--repos` | optional `GITHUB_TOKEN` (strongly recommended) |
 | Official feeds | `ingest feeds` | `apps/worker/sources/feeds.json`, or `--feeds key,…` | none |
 | arXiv | `ingest arxiv` | curated queries in `apps/worker/sources/arxiv.json` | none |
@@ -109,7 +109,7 @@ releases, models or quantization schemes; those need editorial data.
 `npm run ingest:scheduled` (worker `scheduled`) is the cron entrypoint. It runs every source in
 `MUTINAI_LIVE_SOURCES`, each independently with `--since last-run` and its defaults:
 
-- Hugging Face: watchlist authors, derivatives and unresolved re-checks
+- Hugging Face: watchlist repositories and authors, derivatives and unresolved re-checks
 - GitHub: known projects
 - feeds and arXiv: their configuration
 

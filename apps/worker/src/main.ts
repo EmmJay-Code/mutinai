@@ -60,6 +60,7 @@ const store = new FileSystemObjectStore(resolve(REPO_ROOT, process.env.OBJECT_ST
 const LIVE_SOURCES = ['huggingface', 'github', 'feeds', 'arxiv'] as const;
 type LiveSource = (typeof LIVE_SOURCES)[number];
 const hfWatchlist = JSON.parse(readFileSync(new URL('../sources/huggingface.json', import.meta.url), 'utf8')) as {
+  repos: string[];
   authors: string[];
   derivatives: { relations: string[]; perVariant: number; minLikes?: number };
 };
@@ -115,6 +116,9 @@ async function buildAdapter(name: string, flags: IngestFlags): Promise<SourceAda
     // The Hub's limits are fixed 5-minute windows: wait a window out rather than abort a scheduled run midway.
     const client = new HttpClient({ token, log, userAgent: process.env.MUTINAI_USER_AGENT || DEFAULT_USER_AGENT, maxWaitMs: 330_000 });
     const repos = new Set(flags.repos ?? []);
+    // With no explicit selection the curated repositories apply, like the watchlist authors below: author listings are
+    // windowed by `--since`, so a named first-party repo is otherwise only seen in the run that first published it.
+    if (!selecting) for (const id of hfWatchlist.repos) repos.add(id);
     if (flags.known) for (const id of await knownVariantRepos()) repos.add(id);
     if (flags.recheckUnresolved) for (const id of await unresolvedExternalIds('huggingface')) repos.add(id);
     log(`huggingface: ${token ? 'authenticated' : 'anonymous (500 requests / 5 min)'}; ${repos.size} explicit repo(s)`);
@@ -228,7 +232,7 @@ async function scheduled() {
   if (unknown.length) throw new Error(`MUTINAI_LIVE_SOURCES contains unknown sources: ${unknown.join(', ')} (live sources: ${LIVE_SOURCES.join(', ')})`);
   const limit = Number(process.env.MUTINAI_INGEST_LIMIT || 300);
   const defaults: Record<LiveSource, Partial<IngestFlags>> = {
-    huggingface: { authors: hfWatchlist.authors, derivatives: true, recheckUnresolved: true },
+    huggingface: { repos: hfWatchlist.repos, authors: hfWatchlist.authors, derivatives: true, recheckUnresolved: true },
     github: { known: true },
     feeds: {},
     arxiv: {},
