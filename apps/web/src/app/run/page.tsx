@@ -1,9 +1,10 @@
 import { catalog, community, compatQueries, getDb } from '@mutinai/db';
-import { CAPABILITIES } from '@mutinai/domain';
+import { balanceStarterDownload, CAPABILITIES, describeModel, pickStarter, profileMean, readingSpeed, speedupPhrase, STARTER_MIN_TPS } from '@mutinai/domain';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Disclosure, Empty, FitBadge, Speed } from '@/components/ui';
-import { EntityMark, MemoryScale, ParamsReach } from '@/components/viz';
+import { Disclosure, Empty, FitBadge, LicenseShort, Speed, PageHead } from '@/components/ui';
+import { RunSteps } from '@/components/run-steps';
+import { EntityMark, EstimateTag, MemoryScale, ParamsReach } from '@/components/viz';
 import { maxParamsAtQ4, systemUsableGb } from '@/lib/hardware';
 import { measurementPolicy } from '@/lib/community-visibility';
 import { CAPABILITY_LABEL, FORM_FACTOR_LABEL, formatBytes, formatContext, formatParams, humanize, numberParam, searchParam } from '@/lib/format';
@@ -38,7 +39,7 @@ function MemoryBar({ rec }: { rec: Rec }) {
       </div>
       <div className="small muted num" style={{ marginTop: 4 }}>
         {m.totalGb.toFixed(1)} of {capacity.toFixed(1)} GiB
-        {m.offloadedGb > 0 && <> · {m.offloadedGb.toFixed(1)} in RAM</>}
+        {m.offloadedGb > 0 && <> · {m.offloadedGb.toFixed(1)} in RAM</>} <EstimateTag />
       </div>
     </div>
   );
@@ -48,7 +49,7 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const db = getDb();
   const viewer = await getViewer();
-  const [picker, ownConfigs, configurations] = await Promise.all([compatQueries.listHardwarePickerOptions(db), community.listOwnHardwareConfigs(db, viewer), catalog.listConfigurations(db)]);
+  const [picker, ownConfigs, configurations, profiles] = await Promise.all([compatQueries.listHardwarePickerOptions(db), community.listOwnHardwareConfigs(db, viewer), catalog.listConfigurations(db), catalog.listCapabilityProfiles(db)]);
 
   const explicitMode = searchParam(sp, 'mode');
   const mode = explicitMode ?? (searchParam(sp, 'mine') ? 'mine' : searchParam(sp, 'd0') ? 'custom' : searchParam(sp, 'system') ? 'system' : null);
@@ -76,6 +77,16 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
   const cpu = results.filter((r) => r.recommended?.result.placement === 'cpu');
   const offload = results.filter((r) => r.recommended?.result.placement === 'hybrid');
   const wontRun = results.filter((r) => !r.recommended);
+  // One suggestion to start with, so the first thing a newcomer sees is a model rather than a table. Its download is
+  // balanced for speed (a first model should type quickly); the tables below keep the highest-precision recommendation.
+  const tpsOf = (rec: Rec) => (rec.result.speed.basis === 'unknown' ? null : rec.result.speed.genTps);
+  const asOption = (rec: Rec) => ({ rec, bitsPerWeight: rec.row.bitsPerWeight, fit: rec.result.fit, placement: rec.result.placement, genTps: tpsOf(rec), measured: rec.result.speed.basis === 'measured' });
+  const starter = pickStarter(results.flatMap((r) => {
+    if (!r.recommended) return [];
+    const { pick, swappedFrom } = balanceStarterDownload(asOption(r.recommended), r.alternatives.map(asOption));
+    return [{ ...r, download: pick.rec, swappedFrom: swappedFrom?.rec ?? null, placement: pick.placement, fit: pick.fit, genTps: pick.genTps, quality: profileMean(profiles[r.modelSlug]) }];
+  }));
+  const unifiedFraction = hardware?.spec.components.find((c) => c.device.memoryKind === 'unified')?.device.unifiedUsableFraction ?? 0.75;
   const tiers = [
     { key: 'accel', title: 'Runs in accelerator memory', intro: 'Fits entirely in GPU or unified memory — the fast path.', rows: accel },
     { key: 'cpu', title: 'Runs on CPU and system RAM', intro: 'Works without a GPU. Expect slower generation.', rows: cpu },
@@ -100,8 +111,34 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
     picker.configurations.reduce<Record<string, typeof picker.configurations>>((acc, c) => ({ ...acc, [c.formFactor]: [...(acc[c.formFactor] ?? []), c] }), {}),
   ).sort(([a], [b]) => ['laptop', 'mini_pc', 'desktop', 'server'].indexOf(a) - ['laptop', 'mini_pc', 'desktop', 'server'].indexOf(b));
 
+  const has = (slug: string) => picker.configurations.some((c) => c.slug === slug);
+  const quick = [
+    { slug: 'macbook-air-m1-8gb', label: 'Mac with 8 GB' },
+    { slug: 'macbook-air-m4-16gb', label: 'Mac with 16 GB' },
+    { slug: 'windows-laptop-16gb', label: 'Windows laptop, 16 GB, no graphics card' },
+    { slug: 'rtx-4060-ti-16gb-budget', label: 'PC with a 16 GB graphics card' },
+  ].filter((q) => has(q.slug));
   const picker_ = (
     <div className="system-picker">
+      {quick.length > 0 && (
+        <Disclosure id="not-sure" title="Not sure what you have? Help me check" meta="Two numbers decide it: memory, and whether there is a graphics card" open={!hardware && mode !== 'custom'}>
+          <div className="check-help">
+            <div>
+              <h4>On a Mac</h4>
+              <p>Click the Apple logo in the top-left corner of the screen, then <strong>About This Mac</strong>. Note the <strong>Chip</strong> (M1, M2, M3, M4…) and the <strong>Memory</strong> (8 GB, 16 GB…).</p>
+            </div>
+            <div>
+              <h4>On Windows</h4>
+              <p>Press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Esc</kbd> to open Task Manager, then <strong>Performance</strong>. <strong>Memory</strong> shows your RAM. If a <strong>GPU</strong> entry lists <strong>Dedicated GPU memory</strong> of 4 GB or more, you have a graphics card; otherwise you don’t.</p>
+            </div>
+          </div>
+          <p className="small muted" style={{ margin: '10px 0 6px' }}>Then pick the closest match — or the Build your own setup option below for anything else:</p>
+          <div className="chips">
+            {quick.map((q) => <Link key={q.slug} className="chip" href={keep({ mode: 'system', system: q.slug })}>{q.label}</Link>)}
+          </div>
+          <p className="small muted" style={{ margin: '8px 0 0' }}>Still unsure? Start with <Link className="link" href={keep({ mode: 'system', system: 'windows-laptop-16gb' })}>the 16 GB laptop</Link>: what runs there runs on almost any recent computer.</p>
+        </Disclosure>
+      )}
       {ownConfigs.length > 0 && (
         <div className="picker-group">
           <h4>My systems</h4>
@@ -147,12 +184,11 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
 
   return (
     <>
-      <div className="dir-head">
-        <h1><span className="glyph g-system" aria-hidden="true" /> {hardware ? hardware.label : 'What can I run?'}</h1>
-        {hardware
-          ? <span className="count">What can I run? · {formatContext(ctx)} context</span>
-          : <span className="count">Start from the machine you have — we recommend a download, a runtime, and show memory and speed.</span>}
-      </div>
+      <PageHead
+        eyebrow={hardware ? `What can I run? · ${formatContext(ctx)} context` : 'What can I run?'}
+        title={hardware ? hardware.label : 'Start from the machine you have.'}
+        lede={hardware ? undefined : 'Pick the closest setup. Mutinai recommends a download and a runtime for each model, and shows the memory it needs and how fast it will answer.'}
+      />
 
       {!hardware ? (
         <>
@@ -211,7 +247,7 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
             <div><span className="fit fit-full" /><b>{accel.length + cpu.length}</b><span>run well</span></div>
             <div><span className="fit fit-offload" /><b>{offload.length}</b><span>with offload</span></div>
             <div><span className="fit fit-none" /><b>{wontRun.length}</b><span>too large</span></div>
-            <div style={{ flex: '1 1 260px', minWidth: 200 }}><MemoryScale gb={hardware.spec.unifiedMemoryGb ? hardware.spec.unifiedMemoryGb * 0.75 : hardware.spec.components.reduce((a, c) => a + (c.device.memoryKind === 'dedicated' ? (c.device.memoryGb ?? 0) * c.count * 0.95 : 0), 0) || hardware.spec.systemRamGb * 0.8} label="Usable memory" /></div>
+            <div style={{ flex: '1 1 260px', minWidth: 200 }}><MemoryScale gb={hardware.spec.unifiedMemoryGb ? hardware.spec.unifiedMemoryGb * unifiedFraction : hardware.spec.components.reduce((a, c) => a + (c.device.memoryKind === 'dedicated' ? (c.device.memoryGb ?? 0) * c.count * 0.95 : 0), 0) || hardware.spec.systemRamGb * 0.8} label="Usable memory" /></div>
           </div>
           <p className="small muted" style={{ margin: 0 }}>
             {hardware.source === 'reference' && hardware.slug
@@ -219,6 +255,43 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
               : 'Custom and personal systems use estimates unless verified runs exist for the same configuration.'}
           </p>
 
+          {starter && (() => {
+            const rec = starter.download;
+            const tps = tpsOf(rec);
+            const from = starter.swappedFrom;
+            const fromTps = from ? tpsOf(from) : null;
+            const estimated = rec.result.speed.basis === 'estimated' || from?.result.speed.basis === 'estimated';
+            const pace = readingSpeed(tps);
+            const d = describeModel(starter, profiles[starter.modelSlug]);
+            const capacity = rec.result.placement === 'cpu' ? rec.result.memory.systemUsableGb : rec.result.memory.acceleratorUsableGb;
+            return (
+              <section className="starter" aria-labelledby="starter-h">
+                <div className="starter-top">
+                  <div>
+                    <div className="eyebrow">Start with this one</div>
+                    <h2 id="starter-h"><Link href={`/models/${starter.modelSlug}#${starter.variantSlug}`}>{starter.variantName}</Link></h2>
+                    <p className="starter-what">{d.summary} From {starter.developerName}.</p>
+                  </div>
+                  <dl className="starter-facts">
+                    <div><dt>Speed</dt><dd>{pace?.text ?? 'Speed not known yet'}{rec.result.speed.basis === 'estimated' && <> <EstimateTag title="Estimated from memory bandwidth, not measured on this machine" /></>}<span className="sub"><Speed speed={rec.result.speed} /></span></dd></div>
+                    <div><dt>Download</dt><dd>{formatBytes(rec.row.sizeBytes)}<span className="sub mono">{rec.row.schemeName}</span></dd></div>
+                    <div><dt>Memory</dt><dd>{rec.result.memory.totalGb.toFixed(1)} of {capacity.toFixed(1)} GB <EstimateTag /><span className="sub">{rec.result.fit === 'tight' ? 'a tight fit: close other apps first' : rec.result.placement === 'cpu' ? 'runs on the processor' : 'fits entirely'}</span></dd></div>
+                    <div><dt>License</dt><dd><LicenseShort commercialUse={starter.commercialUse} /><span className="sub">{starter.licenseName ?? 'not recorded'}</span></dd></div>
+                  </dl>
+                </div>
+                <p className="small starter-why">
+                  Why this one: a general chat model that fits this machine without spilling out of memory, {tps != null && tps >= 8 ? 'answers faster than you read, ' : ''}and has the strongest benchmark results among those that do.
+                  {from && tps != null && fromTps != null && (
+                    <> Picked <span className="mono">{rec.row.schemeName}</span> over <span className="mono">{from.row.schemeName}</span> because it types {speedupPhrase(tps, fromTps)} faster on this machine (~{Math.round(tps)} vs ~{Math.round(fromTps)} tokens a second{estimated ? ', estimated' : ''}); the larger file is a little more accurate but would run under {STARTER_MIN_TPS} tokens a second. It is in the table below if you want it.</>
+                  )}
+                </p>
+                <h3 className="starter-run">Now run it</h3>
+                <RunSteps variantName={starter.variantName} recommended={rec} alternatives={[starter.recommended!, ...starter.alternatives].filter((a) => a !== rec)} />
+              </section>
+            );
+          })()}
+
+          {results.some((r) => r.recommended) && <h2 className="run-all-head">Everything that runs here <span className="muted small">grouped by how it runs</span></h2>}
           {tiers.map((tier) => tier.rows.length === 0 ? null : (
             <section key={tier.key} className="section-tight" aria-labelledby={`tier-${tier.key}`}>
               <div className="section-head">
@@ -302,7 +375,7 @@ export default async function RunPage({ searchParams }: { searchParams: SP }) {
                   Memory = download size + fp16 KV cache for {formatContext(ctx)} tokens + runtime overhead. Usable memory is 95% of dedicated VRAM, a device-specific share of unified memory (75% by default), and 80% of system RAM for runtimes that can offload. Runtimes must load the file format and support a backend present on the hardware.
                 </p>
                 <p>
-                  Estimated speed is bounded by memory bandwidth ÷ bytes read per token (active parameters for mixture-of-experts), shown in italics with <strong>est.</strong> and a ±35% range. Measured speeds are medians of reference results and verified public community runs on the same system, download and runtime. For each model we recommend the highest-precision download that fits, preferring not to offload.
+                  Estimated speed is bounded by memory bandwidth ÷ bytes read per token (active parameters for mixture-of-experts), shown in italics with an <strong>estimate</strong> label and a ±35% range (hover for it). Measured speeds are medians of reference results and verified public community runs on the same system, download and runtime. For each model we recommend the highest-precision download that fits, preferring not to offload.
                 </p>
               </div>
             </Disclosure>

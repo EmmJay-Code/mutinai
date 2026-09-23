@@ -17,36 +17,25 @@ import {
   compat,
 } from '@mutinai/domain';
 import Link from 'next/link';
-import { PathIcon } from '@/components/icons';
-import { Basis, EntityLink, Explain, FitBadge, LicenseShort, Placeholder, Speed } from '@/components/ui';
-import { Avatar, CapabilityBars, EntityMark, FrontierChart, Heat, MemoryScale, MonthlyBars, SystemsMeter } from '@/components/viz';
+import { EdSection } from '@/components/editorial';
+import { Basis, EntityLink, Explain, LicenseShort, OriginBasis, Placeholder } from '@/components/ui';
+import { Avatar, CapabilityBars, EntityMark, Heat, MemoryScale, MonthlyBars, SystemsMeter } from '@/components/viz';
 import { entityTypeOfEvent, EVENT_GROUPS } from '@/lib/events';
 import { measurementPolicy } from '@/lib/community-visibility';
-import { entityHref, FORM_FACTOR_LABEL, formatDate, formatNumber, formatParams, humanize, isoDate } from '@/lib/format';
+import { entityHref, formatDate, formatNumber, formatParams, humanize, isoDate } from '@/lib/format';
 import { bestDevicePrice, maxParamsAtQ4, roughParams } from '@/lib/hardware';
 import { communityContentIsSample } from '@/lib/session';
 
-const PREVIEW_SYSTEM = 'rtx-4090-workstation';
-
 /** Why anyone would run models themselves. Product statements, not data claims; each opens the surface that proves it. */
 const OPEN_VALUE = [
-  { title: 'Run models yourself', text: 'Download the weights and run them on your own machine — no account, no per-token bill.', href: '/run', label: 'What can I run?' },
-  { title: 'Choose your hardware', text: 'A laptop, one graphics card, a Mac or a server. You decide what the model runs on.', href: '/hardware', label: 'Compare hardware' },
-  { title: 'Control your data', text: 'Prompts, code and documents stay on the machine you ran them on.', href: '/learn#run-locally', label: 'How local models work' },
-  { title: 'Customize the stack', text: 'Swap runtimes, shrink a model to fit your memory, or fine-tune one on your own data.', href: '/tools', label: 'Tools & runtimes' },
-  { title: 'Avoid lock-in', text: 'The weights are files you keep. Nobody can withdraw, reprice or quietly change them.', href: '/learn#start-here', label: 'What “open” means' },
-];
-
-const LEARN_PATHS = [
-  { id: 'start-here', title: 'Start here', text: 'What open models are and why running them yourself matters.' },
-  { id: 'run-locally', title: 'Run locally', text: 'Memory, quantization and runtimes decide what you can run.' },
-  { id: 'understand-models', title: 'Understand models', text: 'Families, releases, variants and benchmarks, decoded.' },
-  { id: 'build', title: 'Build with them', text: 'APIs, coding assistants, agents and fine-tuning.' },
+  { title: 'Your data stays put', text: 'Prompts, code and documents stay on the machine you ran them on.', href: '/learn#run-locally', label: 'How local models work' },
+  { title: 'No account, no per-token bill', text: 'Download the weights once and run them on a laptop, one graphics card, a Mac or a server.', href: '/run', label: 'What can I run?' },
+  { title: 'Nobody can take it back', text: 'The weights are files you keep. Nobody can withdraw, reprice or quietly change them.', href: '/learn#start-here', label: 'What “open” means' },
 ];
 
 /** Entry points phrased the way newcomers ask; each lands on a filtered, explained view. */
 const QUESTIONS = [
-  { href: '/run', label: 'What can my computer run?' },
+  { href: '/search?q=like%20chatgpt', label: 'Something like ChatGPT, on my computer?' },
   { href: '/models?for=coding#all-models', label: 'What’s good for coding?' },
   { href: '/hardware?goal=apple#catalog', label: 'Can a Mac run these?' },
   { href: '/hardware?goal=upgrade#catalog', label: 'Which GPU should I buy?' },
@@ -64,34 +53,26 @@ const LOCAL_MEMORY_GB = 22;
 export default async function DiscoverPage() {
   const db = getDb();
   const now = new Date();
-  const [events, observations, liveStatus, frontier, models, stats, picker, submissions, reviews, profiles, summary, runtimes, devices, counts, bestScores, observedPrices] = await Promise.all([
+  const [events, observations, liveStatus, frontier, models, stats, submissions, reviews, profiles, summary, devices, counts, bestScores, observedPrices] = await Promise.all([
     catalog.listEvents(db, { limit: 1000 }),
     catalog.listMetricObservations(db, { since: new Date(now.getTime() - (FRESHNESS.trendingDays + FRESHNESS.trendingBaselineMaxDays + 1) * DAY), metrics: TRENDING_METRICS }),
     catalog.liveSourceStatus(db),
     catalog.benchmarkFrontier(db, 'gpqa-diamond'),
     catalog.listModels(db),
     community.getCommunityStats(db),
-    compatQueries.listHardwarePickerOptions(db),
     community.listSubmissions(db, {}, undefined, 40),
     community.listRecentReviews(db, undefined, 10),
     catalog.listCapabilityProfiles(db),
     compatQueries.compatSummaryByModel(db, { contextLength: 8192, ...measurementPolicy() }),
-    catalog.listProjects(db, { category: 'runtime' }),
     catalog.listDevices(db, { sort: 'memory' }),
     catalog.getCatalogCounts(db),
     catalog.listBenchmarkScores(db),
     catalog.listLatestDevicePrices(db),
   ]);
-  const previewHardware = await compatQueries.loadReferenceHardware(db, PREVIEW_SYSTEM);
-  const preview = previewHardware ? await compatQueries.runCompatibility(db, previewHardware, { contextLength: 8192, ...measurementPolicy() }) : [];
-  const picks = preview
-    .filter((r) => r.recommended && r.recommended.result.placement === 'accelerator' && r.variantKind !== 'fine_tune')
-    .sort((a, b) => b.paramsTotal - a.paramsTotal)
-    .slice(0, 5);
 
   const best = frontier?.points.at(-1);
 
-  // Reading order: why open models → what changed → what members report → where to explore → families → benchmarks → hardware.
+  // Reading order: why open models (with ways in) → what changed → families → benchmarks → hardware → what members report.
   // Time-sensitive selection follows docs/freshness.md: event time only, fixtures never compete with live data.
   const { mode, topStory: lead, latest: rest, recentReleaseCount } = selectDiscover(events, now, { latestLimit: 8 });
   const digest = digestByKind(events, now, EVENT_GROUPS);
@@ -111,10 +92,6 @@ export default async function DiscoverPage() {
   const activeModels = sampleCommunity ? [] : models.filter((m) => m.reviewCount + m.runCount > 0).sort((a, b) => b.reviewCount + b.runCount - (a.reviewCount + a.runCount)).slice(0, 3);
   const featuredRuns = sampleCommunity ? [] : submissions.slice(0, 3);
   const featuredReviews = sampleCommunity ? [] : [...reviews].sort((a, b) => b.helpfulScore - a.helpfulScore).slice(0, 2);
-  const order = ['laptop', 'mini_pc', 'desktop', 'server'];
-  const systemsByForm = Object.entries(
-    picker.configurations.reduce<Record<string, typeof picker.configurations>>((acc, c) => ({ ...acc, [c.formFactor]: [...(acc[c.formFactor] ?? []), c] }), {}),
-  ).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
 
   // Families: the unit people actually follow. Folded from the models already loaded, never a separate editorial list.
   const families = rankFamilies(
@@ -156,77 +133,52 @@ export default async function DiscoverPage() {
   const unifiedDevices = devices.filter((d) => d.memoryKind === 'unified');
   const hardwareEvents = rest.concat(lead ? [lead] : []).filter((e) => e.kind === 'hardware_launch').sort((a, b) => +new Date(b.occurredAt) - +new Date(a.occurredAt)).slice(0, 3);
 
-  const researchCount = events.filter((e) => EVENT_GROUPS.find((g) => g.key === 'research')!.kinds.includes(e.kind)).length;
-  const exploreAreas: { href: string; glyph?: string; icon?: string; title: string; text: string; facts: string[] }[] = [
-    { href: '/models', glyph: 'g-model', title: 'Models', text: 'Open-weight models by what you want to do, and what each one needs to run.', facts: [`${counts.model ?? 0} models`, `${counts.model_family ?? 0} families`, `${counts.model_artifact ?? 0} downloads`] },
-    { href: '/hardware', glyph: 'g-hardware', title: 'Hardware', text: 'Graphics cards, Apple silicon and complete systems, compared by what they can hold.', facts: [`${counts.hardware_device ?? 0} devices`, `${counts.hardware_configuration ?? 0} reference systems`] },
-    { href: '/tools', glyph: 'g-tool', title: 'Tools & runtimes', text: 'The programs that load and serve models: runtimes, interfaces, assistants, fine-tuning.', facts: [`${counts.project ?? 0} projects`, `${runtimes.length} runtimes`] },
-    { href: '/benchmarks', glyph: 'g-bench', title: 'Benchmarks', text: 'How models are compared, what each test measures, and who reported the score.', facts: [`${counts.benchmark ?? 0} benchmarks`, `${counts.benchmark_result ?? 0} results`] },
-    { href: '/new?kind=research', glyph: 'g-event', title: 'Research & news', text: 'Papers and announcements from the labs and projects, on the timeline with everything else.', facts: [researchCount ? `${researchCount} papers & announcements` : 'Nothing tracked yet'] },
-    { href: '/learn', icon: 'learn', title: 'Learn', text: 'Plain-language guides: what the words mean, what fits your machine, what to build with.', facts: [`${LEARN_PATHS.length} guides`] },
-  ];
 
   return (
     <>
-      <section className="opening" aria-labelledby="hero-title">
-        <div>
-          <div className="eyebrow">Open models · {mode === 'live' ? (liveStatus.lastCheckedAt ? `sources checked ${formatDate(liveStatus.lastCheckedAt)}` : 'live sources') : 'illustrative fixture data'}</div>
-          <h1 id="hero-title">AI you can download, run and keep.</h1>
-          <p className="lede">
-            Open models are published as files anyone can download: you run them on your own hardware instead of sending your work to
-            someone else’s. Mutinai tracks the models, the machines they fit and the tools that run them, and labels every figure with
-            where it came from.
-          </p>
-          <div className="opening-actions">
-            <a className="btn btn-primary btn-large" href="#now">What’s happening right now</a>
-            <Link className="btn btn-large" href="/run">What can I run?</Link>
-          </div>
+      <section className="cover" aria-labelledby="hero-title">
+        <div className="eyebrow">Open models · {mode === 'live' ? (liveStatus.lastCheckedAt ? `sources checked ${formatDate(liveStatus.lastCheckedAt)}` : 'live sources') : 'illustrative fixture data'}</div>
+        <h1 id="hero-title">AI you can download, run and keep.</h1>
+        <p className="lede">
+          Open models are published as files anyone can download: you run them on your own hardware instead of sending your work to
+          someone else’s. Mutinai tracks the models, the machines they fit and the tools that run them, and labels every figure with
+          where it came from.
+        </p>
+        <div className="cover-actions">
+          <Link className="btn btn-primary" href="/run">What can I run?</Link>
+          <a className="text-link" href="#now">What’s happening right now</a>
         </div>
-        <dl className="stats" aria-label="The ecosystem at a glance">
-          <div><dt>Open-weight models tracked</dt><dd>{models.length}</dd></div>
-          <div><dt>Releases &amp; launches in the last {FRESHNESS.recentDays} days</dt><dd>{recentReleaseCount}</dd></div>
-          <div><dt>Best open GPQA Diamond score{best ? ` · ${best.name}` : ''}</dt><dd>{best ? best.value.toFixed(1) : '—'}<small>%</small></dd></div>
+        <ul className="questions cover-questions" aria-label="Start with a question">
+          {QUESTIONS.map((q) => <li key={q.href}><Link href={q.href}>{q.label}</Link></li>)}
+        </ul>
+        <ul className="statline" aria-label="The ecosystem at a glance">
+          <li><b>{models.length}</b>open-weight models</li>
+          <li><b>{recentReleaseCount}</b>releases &amp; launches in {FRESHNESS.recentDays} days</li>
+          {best && <li>Best open GPQA Diamond <b style={{ marginLeft: 4 }}>{best.value.toFixed(1)}%</b>({best.name})</li>}
           {sampleCommunity
-            ? <div><dt>Tools &amp; runtimes tracked</dt><dd>{counts.project ?? 0}</dd></div>
-            : <div><dt>Verified community runs</dt><dd>{stats.verified}<small>of {stats.submissions}</small></dd></div>}
-        </dl>
-        <ul className="why" aria-label="Why run open models yourself">
-          {OPEN_VALUE.map((v) => (
-            <li key={v.title}>
-              <strong>{v.title}</strong>
-              <p>{v.text}</p>
-              <Link className="small link" href={v.href}>{v.label} →</Link>
-            </li>
-          ))}
+            ? <li><b>{counts.project ?? 0}</b>tools &amp; runtimes</li>
+            : <li><b>{stats.verified}</b>verified community runs</li>}
         </ul>
       </section>
 
-      <section className="region now" id="now" aria-labelledby="now-heading">
-        <div className="section-head now-head">
-          <h2 id="now-heading"><span className="glyph g-event" aria-hidden="true" /> What’s happening right now</h2>
-          <div className="more"><Link href="/new">Full timeline →</Link></div>
-        </div>
+      <EdSection id="now" title="What’s happening right now" tools={<Link className="more" href="/new">Full timeline →</Link>}>
+        {digest.some((d) => d.recentCount > 0) && (
+          <ul className="kind-links" aria-label={`Tracked changes by part of the ecosystem, last ${FRESHNESS.recentDays} days`}>
+            {EVENT_GROUPS.map((group) => {
+              const d = digest.find((x) => x.key === group.key)!;
+              if (!d.recentCount) return null;
+              return (
+                <li key={group.key}>
+                  <Link href={`/new?kind=${group.key}`} title={d.latest ? `Latest: ${d.latest.title}` : undefined}>
+                    <EntityMark type={group.type} /> <b>{d.recentCount}</b> {group.label.toLowerCase()} <span className="quiet">in {FRESHNESS.recentDays} days</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
 
-        <ul className="kind-digest" aria-label={`Tracked changes by part of the ecosystem, last ${FRESHNESS.recentDays} days`}>
-          {EVENT_GROUPS.map((group) => {
-            const d = digest.find((x) => x.key === group.key)!;
-            return (
-              <li key={group.key}>
-                <Link href={`/new?kind=${group.key}`}>
-                  <span className="kd-head"><EntityMark type={group.type} /> {group.label}</span>
-                  <span className="kd-count">{d.recentCount}<small>in {FRESHNESS.recentDays} days</small></span>
-                  <span className="kd-last">
-                    {d.latest
-                      ? <>Latest: {d.latest.title} <span className="faint">· {eventDate(d.latest.occurredAt, now)}</span></>
-                      : <span className="faint">Nothing tracked yet</span>}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-
-        {lead ? (
+        {lead && (
           <article className="lead" aria-labelledby="lead-title">
             <div>
               <div className="lead-flag">Top story</div>
@@ -255,20 +207,6 @@ export default async function DiscoverPage() {
               </div>
             )}
           </article>
-        ) : (
-          <article className="lead lead-quiet" aria-labelledby="lead-title">
-            <div>
-              <div className="lead-flag">No top story</div>
-              <h3 id="lead-title">Nothing major in the last {FRESHNESS.topStoryDays} days</h3>
-              <p>
-                {!events.length
-                  ? 'No events are tracked yet. Model releases, hardware launches, runtime versions, benchmark updates and research appear here as soon as a source reports them.'
-                  : mode === 'live'
-                    ? 'A top story needs a model release, a hardware launch or a new runtime version from the past two weeks. The latest tracked events are below.'
-                    : 'Only illustrative fixture data is loaded, so nothing here is current. The latest fixture events are below.'}
-              </p>
-            </div>
-          </article>
         )}
 
         <div className="now-grid">
@@ -291,6 +229,14 @@ export default async function DiscoverPage() {
               })}
             </ol>
             {!rest.length && <p className="small muted">No events tracked yet.</p>}
+            {/* With no top story (only fixtures, or a quiet fortnight) the page opens on news, not on an empty block. */}
+            {!lead && events.length > 0 && (
+              <p className="small muted" style={{ marginTop: 'var(--s3)' }}>
+                {mode === 'live'
+                  ? `No top story: nothing major — a model release, hardware launch or new runtime version — in the last ${FRESHNESS.topStoryDays} days.`
+                  : 'Only illustrative fixture data is loaded, so none of this is current news.'}
+              </p>
+            )}
           </div>
 
           <aside className="rail" aria-label="Trending and release activity">
@@ -326,13 +272,169 @@ export default async function DiscoverPage() {
             </section>
           </aside>
         </div>
-      </section>
+      </EdSection>
 
-      <section className="region" id="community" aria-labelledby="community-heading">
-        <div className="section-head">
-          <h2 id="community-heading"><span className="glyph g-member" aria-hidden="true" /> What the community is talking about</h2>
-          <div className="more"><Link href="/community">All contributions →</Link></div>
+
+
+      <EdSection
+        id="families"
+        title="Models worth knowing"
+        intro="Open models arrive in families. Start with the family and who builds it, then open a release to see its sizes and variants."
+        tools={<Link className="more" href="/models">All models →</Link>}
+      >
+        {families.length ? (
+          <ul className="family-list">
+            {families.map((f) => (
+              <li key={f.slug}>
+                <div className="fam-id">
+                  <h3><Link href={`/models?family=${f.slug}`}>{f.name}</Link></h3>
+                  <div className="by">{f.developer}</div>
+                </div>
+                <div className="fam-known">
+                  <span className="fam-label">Known for</span>
+                  {f.summary.knownFor}
+                </div>
+                <div className="fam-facts">
+                  <span>
+                    {f.summary.paramsMin != null && (
+                      <>{f.summary.paramsMin === f.summary.paramsMax ? formatParams(f.summary.paramsMax) : `${formatParams(f.summary.paramsMin)} – ${formatParams(f.summary.paramsMax)}`}{' '}
+                        <Explain term="parameters">parameters</Explain></>
+                    )}
+                  </span>
+                  <span>{f.summary.architecture === 'dense' ? 'Dense' : f.summary.architecture ? <Explain term="moe">{ARCHITECTURE_PHRASE[f.summary.architecture]}</Explain> : null}</span>
+                  <span>{f.summary.latestReleasedOn ? `Newest release ${formatDate(f.summary.latestReleasedOn)}` : 'No release date recorded'}</span>
+                </div>
+                <div className="fam-models">
+                  {f.models.slice(0, 3).map((m) => <Link key={m.slug} className="chip" href={`/models/${m.slug}`}>{m.name}</Link>)}
+                  {f.summary.modelCount > 3 && <Link className="small link" href={`/models?family=${f.slug}`}>all {f.summary.modelCount} →</Link>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="small muted">No model families tracked yet.</p>
+        )}
+      </EdSection>
+
+      <EdSection
+        id="benchmarks"
+        title="How they compare"
+        intro={<>A <Explain term="benchmark" /> is a fixed set of questions every model answers, so scores can be compared. Positions below are relative to the best open result Mutinai holds for that test.</>}
+        tools={<Link className="more" href="/benchmarks">All benchmarks →</Link>}
+      >
+        <div className="bench-groups">
+          {axes.map(({ axis, benchmarkName, leaders }) => (
+            <section key={axis.key} className="bench-group" aria-labelledby={`bench-${axis.key}`}>
+              <h3 id={`bench-${axis.key}`}>{axis.label} <span>best scores on {benchmarkName}</span></h3>
+              <ol className="bench-list">
+                {leaders.map((s) => (
+                  <li key={s.modelSlug}>
+                    <Link className="name" href={`/models/${s.modelSlug}`}>{s.modelName}</Link>
+                    <span className="val">{s.value.toFixed(1)}</span>
+                    <span className="bar" aria-hidden="true"><i style={{ width: `${s.share}%` }} /></span>
+                  </li>
+                ))}
+              </ol>
+              <p className="bench-basis"><OriginBasis origins={leaders.map((s) => s.origin)} /> <Link className="link nowrap" href="/benchmarks">what it measures →</Link></p>
+            </section>
+          ))}
+
+          <section className="bench-group" aria-labelledby="bench-local">
+            <h3 id="bench-local">Runs on your own machine</h3>
+            <ol className="bench-list">
+              {localLeaders.map((m) => {
+                const mem = memoryPhrase(m.minMemoryGb);
+                const s = summary[m.slug];
+                return (
+                  <li key={m.slug}>
+                    <Link className="name" href={`/models/${m.slug}`}>{m.name}</Link>
+                    <span className="val small">{mem?.amount}</span>
+                    <span className="src small muted">{s ? `runs well on ${s.runsWell} of ${s.of} reference systems` : mem?.fits}</span>
+                  </li>
+                );
+              })}
+            </ol>
+            {!localLeaders.length && <p className="small muted">No model in the catalog fits {LOCAL_MEMORY_GB} GB yet.</p>}
+            <p className="bench-basis"><Basis kind="estimated" title="Memory estimated by the compatibility engine from file size, quantization and context">estimated</Basis> <span className="small muted">smallest download at 8K <Explain term="context" /></span></p>
+          </section>
+
+          <section className="bench-group" aria-labelledby="bench-mm">
+            <h3 id="bench-mm">Images and multimodal</h3>
+            <p className="small muted">
+              {visionModels.length
+                ? <>{visionModels.length} tracked model{visionModels.length === 1 ? '' : 's'} accept{visionModels.length === 1 ? 's' : ''} images, but Mutinai holds no multimodal benchmark results yet, so there is nothing to rank here. <Link className="link" href="/models?capability=vision#all-models">See the models →</Link></>
+                : 'No models that accept images, and no multimodal benchmark results, are tracked yet.'}
+            </p>
+          </section>
         </div>
+      </EdSection>
+
+      <EdSection
+        id="hardware"
+        title="Hardware watch"
+        intro="Memory decides what fits; memory speed decides how fast it answers. Prices are shown only with what they mean and when they were checked."
+        tools={<Link className="more" href="/hardware">All hardware →</Link>}
+      >
+
+        {hardwareEvents.length > 0 && (
+          <ul className="hw-launches" aria-label="Recent hardware launches">
+            {hardwareEvents.map((e) => (
+              <li key={e.id}>
+                <span className="kicker"><EntityMark type="hardware" word="Launch" /> · <time dateTime={isoDate(e.occurredAt)}>{eventDate(e.occurredAt, now)}</time></span>
+                <span className="t">{e.entities[0] && entityHref(e.entities[0]) ? <Link href={entityHref(e.entities[0])!}>{e.title}</Link> : e.title}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="hw-tiers">
+          <div>
+            <h3 className="subhead"><Explain term="vram">Graphics memory</Explain> tiers</h3>
+            <ul className="tier-list">
+              {memoryTiers.map((t) => (
+                <li key={t.gb}>
+                  <span className="tier-gb num">{t.gb}<small>GB</small></span>
+                  <span className="tier-fit">Holds models up to {roughParams(maxParamsAtQ4(t.gb * compat.COMPAT_CONSTANTS.dedicatedUsableFraction))} at 4-bit <Basis kind="estimated">estimated</Basis></span>
+                  <span className="tier-devices">
+                    {t.devices.map((d) => {
+                      const price = bestDevicePrice(d, observedPrices[d.slug]);
+                      const p = price ? formatPrice(price) : null;
+                      return (
+                        <span key={d.slug} className="tier-device">
+                          <Link href={`/hardware/${d.slug}`}>{shortDevice(d.name)}</Link>
+                          {p && <em title={p.description}>{p.value} <span className="faint">{p.qualifier}</span></em>}
+                        </span>
+                      );
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {!memoryTiers.length && <p className="small muted">No devices with recorded memory yet.</p>}
+            <p className="small muted" style={{ marginTop: 'var(--s3)' }}>
+              Mutinai records launch prices (<Explain term="msrp" />) and, where a retail price has been checked, the date it was
+              checked. It keeps no price history yet, so it shows no price trends.
+            </p>
+          </div>
+          <div>
+            <h3 className="subhead"><Explain term="unified-memory">Unified memory</Explain></h3>
+            <p className="small muted" style={{ marginTop: 0 }}>These chips share one pool of memory with the processor, so what fits is chosen when the machine is bought, not by the chip.</p>
+            <ul className="mini-list">
+              {unifiedDevices.slice(0, 5).map((d) => (
+                <li key={d.slug}>
+                  <EntityMark type="hardware" />
+                  <Link href={`/hardware/${d.slug}`}>{shortDevice(d.name)}<span className="sub">{d.vendor.name}{d.memoryBandwidthGbps ? ` · ${formatNumber(d.memoryBandwidthGbps, 0)} GB/s memory speed` : ''}</span></Link>
+                </li>
+              ))}
+            </ul>
+            {!unifiedDevices.length && <p className="small muted">No unified-memory devices tracked yet.</p>}
+          </div>
+        </div>
+
+      </EdSection>
+
+
+      <EdSection id="community" title="What the community is talking about" tools={<Link className="more" href="/community">All contributions →</Link>}>
         <div className="signal">
           <p className="signal-note">
             <Basis kind="community">Community</Basis>{' '}
@@ -396,253 +498,19 @@ export default async function DiscoverPage() {
             </Placeholder>
           )}
         </div>
-      </section>
+      </EdSection>
 
-      <section className="region" id="explore" aria-labelledby="explore-h">
-        <div className="section-head"><h2 id="explore-h">Explore the ecosystem</h2></div>
-        <h3 className="explore-q">Start with a question</h3>
-        <ul className="questions">
-          {QUESTIONS.map((q) => <li key={q.href}><Link href={q.href}>{q.label}</Link></li>)}
+      <EdSection id="why" title="Why run models yourself">
+        <ul className="reasons">
+          {OPEN_VALUE.map((v) => (
+            <li key={v.title}>
+              <h3>{v.title}</h3>
+              <p>{v.text}</p>
+              <Link href={v.href}>{v.label} →</Link>
+            </li>
+          ))}
         </ul>
-        <div className="gateways six">
-          {exploreAreas.map((a) => (
-            <Link key={a.href} href={a.href} className="gateway">
-              {a.glyph ? <span className={`glyph ${a.glyph}`} aria-hidden="true" /> : <PathIcon name={a.icon!} size={14} />}
-              <h3>{a.title}</h3>
-              <p>{a.text}</p>
-              <span className="gateway-links">{a.facts.map((f) => <span key={f}>{f}</span>)}</span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="region" id="families" aria-labelledby="families-h">
-        <div className="section-head">
-          <div>
-            <h2 id="families-h"><span className="glyph g-model" aria-hidden="true" /> Models worth knowing</h2>
-            <p>Open models arrive in families. Start with the family and who builds it, then open a release to see its sizes and variants.</p>
-          </div>
-          <div className="more"><Link href="/models">All models →</Link></div>
-        </div>
-        {families.length ? (
-          <ul className="family-list">
-            {families.map((f) => (
-              <li key={f.slug}>
-                <div className="fam-id">
-                  <h3><Link href={`/models?family=${f.slug}`}>{f.name}</Link></h3>
-                  <div className="by">{f.developer}</div>
-                </div>
-                <div className="fam-known">
-                  <span className="fam-label">Known for</span>
-                  {f.summary.knownFor}
-                </div>
-                <div className="fam-facts">
-                  <span>
-                    {f.summary.paramsMin != null && (
-                      <>{f.summary.paramsMin === f.summary.paramsMax ? formatParams(f.summary.paramsMax) : `${formatParams(f.summary.paramsMin)} – ${formatParams(f.summary.paramsMax)}`}{' '}
-                        <Explain term="parameters">parameters</Explain></>
-                    )}
-                  </span>
-                  <span>{f.summary.architecture === 'dense' ? 'Dense' : f.summary.architecture ? <Explain term="moe">{ARCHITECTURE_PHRASE[f.summary.architecture]}</Explain> : null}</span>
-                  <span>{f.summary.latestReleasedOn ? `Newest release ${formatDate(f.summary.latestReleasedOn)}` : 'No release date recorded'}</span>
-                </div>
-                <div className="fam-models">
-                  {f.models.slice(0, 3).map((m) => <Link key={m.slug} className="chip" href={`/models/${m.slug}`}>{m.name}</Link>)}
-                  {f.summary.modelCount > 3 && <Link className="small link" href={`/models?family=${f.slug}`}>all {f.summary.modelCount} →</Link>}
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="small muted">No model families tracked yet.</p>
-        )}
-      </section>
-
-      <section className="region" id="benchmarks" aria-labelledby="bench-h">
-        <div className="section-head">
-          <div>
-            <h2 id="bench-h"><span className="glyph g-bench" aria-hidden="true" /> How they compare</h2>
-            <p>
-              A <Explain term="benchmark" /> is a fixed set of questions every model answers, so scores can be compared.
-              Positions below are relative to the best open result Mutinai holds for that test.
-            </p>
-          </div>
-          <div className="more"><Link href="/benchmarks">All benchmarks →</Link></div>
-        </div>
-        <div className="bench-groups">
-          {axes.map(({ axis, benchmarkName, leaders }) => (
-            <section key={axis.key} className="bench-group" aria-labelledby={`bench-${axis.key}`}>
-              <h3 id={`bench-${axis.key}`}>{axis.label} <span>best scores on {benchmarkName}</span></h3>
-              <ol className="bench-list">
-                {leaders.map((s) => (
-                  <li key={s.modelSlug}>
-                    <Link className="name" href={`/models/${s.modelSlug}`}>{s.modelName}</Link>
-                    <span className="val">{s.value.toFixed(1)}</span>
-                    <span className="bar" aria-hidden="true"><i style={{ width: `${s.share}%` }} /></span>
-                  </li>
-                ))}
-              </ol>
-              <p className="bench-basis"><Basis kind="source" title="Reported by the model's developer, not measured by Mutinai">developer-reported</Basis> <Link className="link nowrap" href="/benchmarks">what it measures →</Link></p>
-            </section>
-          ))}
-
-          <section className="bench-group" aria-labelledby="bench-local">
-            <h3 id="bench-local">Runs on your own machine</h3>
-            <ol className="bench-list">
-              {localLeaders.map((m) => {
-                const mem = memoryPhrase(m.minMemoryGb);
-                const s = summary[m.slug];
-                return (
-                  <li key={m.slug}>
-                    <Link className="name" href={`/models/${m.slug}`}>{m.name}</Link>
-                    <span className="val small">{mem?.amount}</span>
-                    <span className="src small muted">{s ? `runs well on ${s.runsWell} of ${s.of} reference systems` : mem?.fits}</span>
-                  </li>
-                );
-              })}
-            </ol>
-            {!localLeaders.length && <p className="small muted">No model in the catalog fits {LOCAL_MEMORY_GB} GB yet.</p>}
-            <p className="bench-basis"><Basis kind="estimated" title="Memory estimated by the compatibility engine from file size, quantization and context">estimated</Basis> <span className="small muted">smallest download at 8K <Explain term="context" /></span></p>
-          </section>
-
-          <section className="bench-group" aria-labelledby="bench-mm">
-            <h3 id="bench-mm">Images and multimodal</h3>
-            <p className="small muted">
-              {visionModels.length
-                ? <>{visionModels.length} tracked model{visionModels.length === 1 ? '' : 's'} accept{visionModels.length === 1 ? 's' : ''} images, but Mutinai holds no multimodal benchmark results yet, so there is nothing to rank here. <Link className="link" href="/models?capability=vision#all-models">See the models →</Link></>
-                : 'No models that accept images, and no multimodal benchmark results, are tracked yet.'}
-            </p>
-          </section>
-        </div>
-        {frontier && (
-          <figure className="trend-panel wide" style={{ marginTop: 'var(--s4)' }}>
-            <figcaption>
-              <h3><span className="glyph g-bench" aria-hidden="true" /> Best open score over time · {frontier.benchmarkName}</h3>
-              <p>Each step is a release that beat the previous best open result. Developer-reported scores.</p>
-            </figcaption>
-            <FrontierChart points={frontier.points} width={460} height={170} />
-          </figure>
-        )}
-      </section>
-
-      <section className="region" id="hardware" aria-labelledby="hw-h">
-        <div className="section-head">
-          <div>
-            <h2 id="hw-h"><span className="glyph g-hardware" aria-hidden="true" /> Hardware watch</h2>
-            <p>Memory decides what fits; memory speed decides how fast it answers. Prices are shown only with what they mean and when they were checked.</p>
-          </div>
-          <div className="more"><Link href="/hardware">All hardware →</Link></div>
-        </div>
-
-        {hardwareEvents.length > 0 && (
-          <ul className="hw-launches" aria-label="Recent hardware launches">
-            {hardwareEvents.map((e) => (
-              <li key={e.id}>
-                <span className="kicker"><EntityMark type="hardware" word="Launch" /> · <time dateTime={isoDate(e.occurredAt)}>{eventDate(e.occurredAt, now)}</time></span>
-                <span className="t">{e.entities[0] && entityHref(e.entities[0]) ? <Link href={entityHref(e.entities[0])!}>{e.title}</Link> : e.title}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <div className="hw-tiers">
-          <div>
-            <h3 className="subhead"><Explain term="vram">Graphics memory</Explain> tiers</h3>
-            <ul className="tier-list">
-              {memoryTiers.map((t) => (
-                <li key={t.gb}>
-                  <span className="tier-gb num">{t.gb}<small>GB</small></span>
-                  <span className="tier-fit">Holds models up to {roughParams(maxParamsAtQ4(t.gb * compat.COMPAT_CONSTANTS.dedicatedUsableFraction))} at 4-bit <Basis kind="estimated">estimated</Basis></span>
-                  <span className="tier-devices">
-                    {t.devices.map((d) => {
-                      const price = bestDevicePrice(d, observedPrices[d.slug]);
-                      const p = price ? formatPrice(price) : null;
-                      return (
-                        <span key={d.slug} className="tier-device">
-                          <Link href={`/hardware/${d.slug}`}>{shortDevice(d.name)}</Link>
-                          {p && <em title={p.description}>{p.value} <span className="faint">{p.qualifier}</span></em>}
-                        </span>
-                      );
-                    })}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {!memoryTiers.length && <p className="small muted">No devices with recorded memory yet.</p>}
-            <p className="small muted" style={{ marginTop: 'var(--s3)' }}>
-              Mutinai records launch prices (<Explain term="msrp" />) and, where a retail price has been checked, the date it was
-              checked. It keeps no price history yet, so it shows no price trends.
-            </p>
-          </div>
-          <div>
-            <h3 className="subhead"><Explain term="unified-memory">Unified memory</Explain></h3>
-            <p className="small muted" style={{ marginTop: 0 }}>These chips share one pool of memory with the processor, so what fits is chosen when the machine is bought, not by the chip.</p>
-            <ul className="mini-list">
-              {unifiedDevices.slice(0, 5).map((d) => (
-                <li key={d.slug}>
-                  <EntityMark type="hardware" />
-                  <Link href={`/hardware/${d.slug}`}>{shortDevice(d.name)}<span className="sub">{d.vendor.name}{d.memoryBandwidthGbps ? ` · ${formatNumber(d.memoryBandwidthGbps, 0)} GB/s memory speed` : ''}</span></Link>
-                </li>
-              ))}
-            </ul>
-            {!unifiedDevices.length && <p className="small muted">No unified-memory devices tracked yet.</p>}
-          </div>
-        </div>
-
-        {(systemsByForm.length > 0 || picks.length > 0) && (
-        <div className="run-band" style={{ marginTop: 'var(--s5)' }}>
-          <div>
-            <div className="step">What can I run?</div>
-            <h2>Start from the machine you have.</h2>
-            <p className="small muted" style={{ margin: 0 }}>Pick the closest setup — we recommend a download, a runtime, and show memory and speed.</p>
-            <div className="system-picker">
-              {systemsByForm.map(([form, systems]) => (
-                <div className="picker-group" key={form}>
-                  <h4>{FORM_FACTOR_LABEL[form] ?? humanize(form)}</h4>
-                  <div className="chips">
-                    {systems.map((s) => <Link key={s.slug} className="chip" href={`/run?system=${s.slug}`}>{s.name.replace(/\s*\(.*\)$/, '')}</Link>)}
-                  </div>
-                </div>
-              ))}
-              <div className="picker-group"><span /><Link href="/run?mode=custom" className="small link">Build your own setup →</Link></div>
-            </div>
-          </div>
-          {previewHardware && picks.length > 0 && (
-          <div>
-            <div className="section-head" style={{ marginBottom: 4 }}>
-              <h2><span className="glyph g-system" aria-hidden="true" /> {previewHardware.label}</h2>
-              <div className="more"><Link href={`/run?system=${PREVIEW_SYSTEM}`}>Everything it runs →</Link></div>
-            </div>
-            <p className="small muted" style={{ margin: '0 0 4px' }}>Largest models that fit entirely in its 24 GB GPU, at 8K context.</p>
-            <ul className="pick-list">
-              {picks.map((p) => (
-                <li key={p.variantSlug}>
-                  <EntityMark type="variant" />
-                  <div>
-                    <Link className="name" href={`/models/${p.modelSlug}#${p.variantSlug}`}>{p.variantName}</Link>
-                    <div className="small muted"><span className="num">{formatParams(p.paramsTotal)}</span> · <span className="mono">{p.recommended!.row.schemeName}</span> via {p.recommended!.runtime.name}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <FitBadge fit={p.recommended!.result.fit} />
-                    <div className="small"><Speed speed={p.recommended!.result.speed} /></div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-          )}
-        </div>
-        )}
-      </section>
-
-      <section className="region" aria-labelledby="learn-h">
-        <div className="section-head"><h2 id="learn-h">Learn</h2><div className="more"><Link href="/learn">All guides →</Link></div></div>
-        <ol className="paths">
-          {LEARN_PATHS.map((p) => (
-            <li key={p.id}><Link href={`/learn#${p.id}`}><strong>{p.title}</strong><span>{p.text}</span></Link></li>
-          ))}
-        </ol>
-      </section>
+      </EdSection>
     </>
   );
 }

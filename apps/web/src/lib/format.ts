@@ -132,3 +132,15 @@ export const CAPABILITY_LABEL: Record<string, string> = {
   long_context: 'Long context',
   multilingual: 'Multilingual',
 };
+
+/**
+ * How a benchmark subject was run, in a few words: the source's own setting label, with the thinking mode stated
+ * whenever the configuration records it and the label does not already say so. Null when nothing is recorded.
+ */
+export function evaluationModeText(r: { evaluationSetting: string | null; reasoningEnabled?: boolean | null }): string | null {
+  const label = r.evaluationSetting?.trim() || null;
+  const thinking = r.reasoningEnabled == null ? null : r.reasoningEnabled ? 'thinking on' : 'thinking off';
+  if (!thinking) return label;
+  if (!label) return thinking;
+  return /think|reason/i.test(label) ? label : `${label}, ${thinking}`;
+}

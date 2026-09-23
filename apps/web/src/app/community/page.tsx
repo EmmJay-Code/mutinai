@@ -30,9 +30,9 @@ export default async function CommunityPage({ searchParams }: { searchParams: SP
 
   return (
     <>
-      <div className="page-head">
+      <header className="page-head band no-strip">
         <div>
-          <div className="eyebrow"><span className="glyph g-member" aria-hidden="true" /> Community</div>
+          <div className="eyebrow">Community</div>
           <h1>What people are running, measuring and recommending.</h1>
           <p className="lede">Runs record exactly what was run and on what, so results can be reproduced. Reviews rate specific qualities, not a single score.</p>
         </div>
@@ -42,7 +42,7 @@ export default async function CommunityPage({ searchParams }: { searchParams: SP
             <Link className="btn" href="/contribute/review">Write a review</Link>
           </div>
         </IfContributing>
-      </div>
+      </header>
       <SampleCommunityNotice />
       <div className="run-summary">
         <div><b>{stats.profiles}</b><span>members</span></div>

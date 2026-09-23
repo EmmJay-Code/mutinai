@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  balanceStarterDownload,
+  speedupPhrase,
   describeModel,
   deviceCategory,
   deviceClassLabel,
@@ -7,10 +9,17 @@ import {
   formatPrice,
   hardwareGoal,
   licenseOpenness,
+  hardwareMemoryTier,
   memoryPhrase,
+  MEMORY_TIERS,
   MODEL_INTENTS,
+  modelMemoryTier,
   modelIntent,
+  isSpecialist,
+  pickStarter,
   reachPhrase,
+  readingSpeed,
+  searchIntent,
   speedPhrase,
   systemCategories,
   systemMatchesGoal,
@@ -40,6 +49,33 @@ describe('plain-language statements', () => {
     expect(memoryPhrase(5)?.fits).toBe('fits most laptops');
     expect(memoryPhrase(400)?.fits).toBe('needs server-class memory');
     expect(memoryPhrase(null)).toBeNull();
+  });
+
+  it('puts a model in the first tier that holds it', () => {
+    expect(modelMemoryTier(0.6)?.key).toBe('laptop');
+    expect(modelMemoryTier(6)?.key).toBe('laptop');
+    expect(modelMemoryTier(6.1)?.key).toBe('gpu-16');
+    expect(modelMemoryTier(22)?.key).toBe('gpu-24');
+    expect(modelMemoryTier(400)?.key).toBe('server');
+    expect(modelMemoryTier(null)).toBeNull();
+  });
+
+  it('puts a machine in the largest tier it runs completely', () => {
+    // Usable memory: nominal × 0.95 for dedicated cards, × 0.75 for unified memory.
+    expect(hardwareMemoryTier(24 * 0.95)?.key).toBe('gpu-24');
+    expect(hardwareMemoryTier(16 * 0.95)?.key).toBe('gpu-16');
+    expect(hardwareMemoryTier(8 * 0.95)?.key).toBe('laptop');
+    expect(hardwareMemoryTier(64 * 0.75)?.key).toBe('workstation');
+    expect(hardwareMemoryTier(80 * 0.95)?.key).toBe('workstation');
+    expect(hardwareMemoryTier(512 * 0.75)?.key).toBe('server');
+    expect(hardwareMemoryTier(4)).toBeNull();
+  });
+
+  it('agrees with itself: a machine runs every model in its own tier', () => {
+    for (const t of MEMORY_TIERS.filter((x) => Number.isFinite(x.maxGb))) {
+      expect(hardwareMemoryTier(t.maxGb)?.key).toBe(t.key);
+      expect(modelMemoryTier(t.maxGb)?.key).toBe(t.key);
+    }
   });
 
   it('summarises reference-system reach', () => {
@@ -132,5 +168,82 @@ describe('hardware presentation', () => {
     expect(devicePositioning({ deviceKind: 'gpu', memoryKind: 'dedicated' }, 22)).toBe('Comfortable with 14B–24B models.');
     expect(systemPositioning('accelerator', 73, 2)).toMatch(/^Multi-GPU/);
     expect(systemPositioning('ram', 170, 0)).toMatch(/^Budget build/);
+  });
+});
+
+describe('first steps', () => {
+  const c = (over: Partial<Parameters<typeof pickStarter>[0][number]> & { id: string }) => ({
+    variantKind: 'instruct', capabilities: ['chat'], placement: 'accelerator', fit: 'full', genTps: 30, quality: 50, paramsTotal: 8e9, ...over,
+  });
+
+  it('suggests the strongest general chat model that runs comfortably in memory', () => {
+    const pick = pickStarter([
+      c({ id: 'big-offload', quality: 90, placement: 'hybrid', fit: 'offload' }),
+      c({ id: 'coder', variantKind: 'coder', quality: 95 }),
+      c({ id: 'slow', quality: 80, genTps: 3 }),
+      c({ id: 'good', quality: 70 }),
+      c({ id: 'weaker', quality: 40 }),
+    ]);
+    expect(pick?.id).toBe('good');
+  });
+
+  it('falls back to a slow general model rather than suggesting nothing, and returns null when nothing general runs', () => {
+    expect(pickStarter([c({ id: 'slow', genTps: 3 })])?.id).toBe('slow');
+    expect(pickStarter([c({ id: 'base', variantKind: 'base' }), c({ id: 'off', placement: 'hybrid', fit: 'offload' })])).toBeNull();
+  });
+
+  it('says speed against reading speed', () => {
+    expect(readingSpeed(152)?.text).toBe('Much faster than you can read');
+    expect(readingSpeed(9)?.text).toBe('Types faster than you can read');
+    expect(readingSpeed(6)?.tone).toBe('mixed');
+    expect(readingSpeed(2)?.tone).toBe('limited');
+    expect(readingSpeed(null)).toBeNull();
+  });
+});
+
+describe('search intent', () => {
+  it('reads purpose, not just names', () => {
+    expect(searchIntent('like chatgpt')?.key).toBe('chat');
+    expect(searchIntent('something like ChatGPT?')?.key).toBe('chat');
+    expect(searchIntent('coding assistant')?.key).toBe('coding');
+    expect(searchIntent('describe my photos')?.key).toBe('vision');
+  });
+
+  it('knows a coding-only model is not a general assistant', () => {
+    expect(isSpecialist({ capabilities: ['chat', 'code', 'long_context'] })).toBe(true);
+    expect(isSpecialist({ capabilities: ['chat', 'code', 'tool_use', 'multilingual'] })).toBe(false);
+    expect(isSpecialist({ capabilities: ['chat'] })).toBe(false);
+    expect(searchIntent('like chatgpt')?.generalOnly).toBe(true);
+  });
+
+  it('leaves names and hardware alone', () => {
+    expect(searchIntent('qwen2.5 32b')).toBeNull();
+    expect(searchIntent('llama.cpp')).toBeNull();
+    expect(searchIntent('24GB GPU')).toBeNull();
+    expect(searchIntent('gpt2-medium')).toBeNull();
+  });
+});
+
+describe('starter download', () => {
+  const opt = (id: string, bitsPerWeight: number, genTps: number | null, over: Partial<{ fit: string; placement: string; measured: boolean }> = {}) =>
+    ({ id, bitsPerWeight, genTps, fit: 'full', placement: 'accelerator', measured: false, ...over });
+
+  it('keeps a recommendation that is already quick', () => {
+    const q8 = opt('q8', 8.5, 20);
+    expect(balanceStarterDownload(q8, [opt('q4', 4.89, 35)])).toEqual({ pick: q8, swappedFrom: null });
+  });
+
+  it('trades a slow high-precision file for the most precise one that reaches the line', () => {
+    const q8 = opt('q8', 8.5, 9);
+    const { pick, swappedFrom } = balanceStarterDownload(q8, [opt('q6', 6.56, 12), opt('q4', 4.89, 16), opt('q3', 3.91, 20), opt('big-offload', 4.5, 30, { fit: 'offload', placement: 'hybrid' })]);
+    expect(pick.id).toBe('q4');
+    expect(swappedFrom?.id).toBe('q8');
+    expect(speedupPhrase(pick.genTps!, q8.genTps!)).toBe('1.8×');
+    expect(speedupPhrase(27, 9)).toBe('3×');
+  });
+
+  it('keeps the recommendation when nothing smaller reaches the line', () => {
+    const q8 = opt('q8', 8.5, 5);
+    expect(balanceStarterDownload(q8, [opt('q4', 4.89, 9)]).pick.id).toBe('q8');
   });
 });

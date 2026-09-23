@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { createDatabase, ensureBenchmarkDefinitions, ensureQuantizationSchemes, ensureResultSources, FIXTURE_SOURCE_KEY, jobs, linkExternalId, REPO_ROOT, requireEnv, runMigrations, schema, seedDatabase } from '@mutinai/db';
+import { createDatabase, ensureBenchmarkDefinitions, ensureEverydayHardware, ensureQuantizationSchemes, ensureResultSources, FIXTURE_SOURCE_KEY, jobs, linkExternalId, REPO_ROOT, requireEnv, runMigrations, schema, seedDatabase } from '@mutinai/db';
 import {
   ADAPTERS,
   ARXIV_MIN_INTERVAL_MS,
@@ -349,6 +349,8 @@ async function bootstrap() {
   if (sources.created) log(`added ${sources.created} result source(s)`);
   const benchmarks = await ensureBenchmarkDefinitions(db);
   if (benchmarks.created) log(`added ${benchmarks.created} benchmark definition(s)`);
+  const everyday = await ensureEverydayHardware(db);
+  if (everyday.created.length) log(`added ${everyday.created.length} everyday hardware and tool entr(ies)`);
   await ingest('fixtures', NO_FLAGS);
   await work(true);
   log('bootstrap complete');

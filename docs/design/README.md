@@ -4,6 +4,40 @@ Status: accepted · 2026-09-12 · revised 2026-09-12 (information modes, discove
 `python3 -m http.server 3200`, then open `/docs/design/directions/a-observatory.html` etc.). All three use the same
 seeded data and the same surfaces: Discover opening, Happening now, a Models directory section and a model summary.
 
+## Revision · 2026-09-22: editorial hierarchy and Flare
+
+Pages had every element at one weight: bordered intent grids, a start strip, a mode switch and a filter bar all sat
+above the first result, and the brand mint was also the "permissive" status colour. This revision supersedes the
+**Colour**, **Composition and spacing** and the intent-grid and hardware-card parts of **Progressive information
+resolution** below; everything else stands.
+
+- **Three levels, one per page.** Discover is the *cover*: a large serif headline, one primary action, the figures as
+  a single line, then major sections. Section pages (Models, Hardware, Tools, Learn and every `PageHead` page) get a
+  smaller *masthead* on a tinted full-width band, ending in a one-line **Start here** strip — the only place intents,
+  hardware goals or learning paths appear. Then major sections (`EdSection`: serif heading over a 2px ink rule),
+  then groups, then rows. Entity pages stack the hero full width over the at-a-glance verdict as one band of columns (a side column left an
+  empty well under the title), then a sticky pill bar that marks the section being read, then at most five sections
+  (a model page: where it runs, versions & downloads, benchmarks, community, details & sources).
+  Components: `apps/web/src/components/editorial.tsx`.
+- **Catalogs are grouped, not flat.** Each group has a sticky label on the left (title, range pill, one-line hint) and
+  borderless rows on the right carrying only what people compare. Intents, categories and filters are chips in one
+  bar under the section heading. Technical mode keeps the dense index.
+- **Models and Hardware share one memory scale** (`MEMORY_TIERS` in `packages/domain/src/discovery.ts`, the same
+  thresholds `memoryPhrase` always used): a model sits in the first tier that holds it, a machine in the largest tier
+  it runs completely, so "a 24 GB graphics card" names the same models on both pages. A rising bar meter marks how
+  demanding each tier is. Hardware cards and placeholder images are replaced by rows; devices and complete systems
+  share the groups, systems tagged.
+- **Tools are grouped by job**, in the order a setup needs them; the start strip explains the order (runtime, then
+  something to type into, then everything optional).
+- **Colour: Flare.** A signal-flare red-orange (`--accent` #ff6a3d dark, #c2410c light) for the brand mark, the primary
+  action, section eyebrows and the one anchor per page, on warm neutrals. Green now only means permissive / runs well;
+  restricted moved to yellow so it stays distinct from the brand. Light mode is designed separately rather than
+  inverted: warm stone ground, white objects with a soft shadow, and the anchor (the lead story, the "Start here"
+  label) in a deep red-brown. The one gradient allowed is on that anchor and on the masthead band.
+- **Less chrome.** One search in the header (catalog pages keep a scoped search inside their bar), the preview notice
+  is a badge by the logo and a line in the footer, and Discover's zero-count tiles are gone: only parts of the
+  ecosystem with recent activity get a link.
+
 ## Problem
 
 The foundation UI was a database console; the hierarchy pass overcorrected into a sparse marketing site

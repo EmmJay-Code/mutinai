@@ -276,6 +276,8 @@ export interface CapabilityHeadlineDTO {
   computed: boolean;
   subtaskCount: number | null;
   evaluationSetting: string | null;
+  /** Whether the model's reasoning ("thinking") mode was on for the run; null when the source does not say. */
+  reasoningEnabled: boolean | null;
   samples: { numerator: number; count: number } | null;
   origin: string;
   resultSource: string | null;
@@ -288,6 +290,8 @@ export interface PerformanceResultDTO {
   artifactSlug: string;
   artifactName: string;
   modelSlug: string;
+  modelName: string;
+  schemeName: string;
   configuration: { slug: string; name: string };
   runtime: { slug: string; name: string };
   runtimeVersion: string | null;
@@ -411,7 +415,7 @@ export async function getModelDetail(db: Executor, slug: string): Promise<ModelD
   const capabilityHeadlines = await rows<CapabilityHeadlineDTO>(db, sql`
     select ve.slug as "variantSlug", be.slug as "benchmarkSlug", be.name as "benchmarkName",
       bm.label as "metricLabel", bm.unit, h.value::float8 as value, h.computed,
-      ro.subtask_count as "subtaskCount", cfg.label as "evaluationSetting",
+      ro.subtask_count as "subtaskCount", cfg.label as "evaluationSetting", cfg.reasoning_enabled as "reasoningEnabled",
       case when h.sample_count is null then null else jsonb_build_object('numerator', h.sample_numerator, 'count', h.sample_count) end as samples,
       h.origin, rs.name as "resultSource", rs.attribution, run.citation_url as "citationUrl"
     from ecosystem.benchmark_headline_result h
@@ -439,9 +443,14 @@ export async function getModelDetail(db: Executor, slug: string): Promise<ModelD
   };
 }
 
+/** Every measured throughput run in the catalog: the results table behind the speed benchmarks. */
+export async function listAllPerformanceResults(db: Executor): Promise<PerformanceResultDTO[]> {
+  return listPerformanceResults(db, sql`true`);
+}
+
 async function listPerformanceResults(db: Executor, filter: SQL): Promise<PerformanceResultDTO[]> {
   return rows<PerformanceResultDTO>(db, sql`
-    select env.id as "environmentId", ae.slug as "artifactSlug", ae.name as "artifactName", me.slug as "modelSlug",
+    select env.id as "environmentId", ae.slug as "artifactSlug", ae.name as "artifactName", me.slug as "modelSlug", me.name as "modelName", se.name as "schemeName",
       jsonb_build_object('slug', ce.slug, 'name', ce.name) as configuration,
       jsonb_build_object('slug', rte.slug, 'name', rte.name) as runtime,
       env.runtime_version as "runtimeVersion", env.backend, env.context_length as "contextLength",
@@ -454,6 +463,7 @@ async function listPerformanceResults(db: Executor, filter: SQL): Promise<Perfor
     join ecosystem.entity ae on ae.id = a.id
     join ecosystem.model_variant v on v.id = a.variant_id
     join ecosystem.entity me on me.id = v.model_id
+    join ecosystem.entity se on se.id = a.scheme_id
     join ecosystem.entity ce on ce.id = env.hardware_configuration_id
     join ecosystem.entity rte on rte.id = env.runtime_id
     join ecosystem.entity be on be.id = br.benchmark_id
@@ -461,7 +471,7 @@ async function listPerformanceResults(db: Executor, filter: SQL): Promise<Perfor
     left join ingest.source_record sr on sr.id = run.source_record_id
     left join ingest.source src on src.id = sr.source_id
     where ${filter}
-    group by env.id, ae.slug, ae.name, me.slug, ce.slug, ce.name, rte.slug, rte.name
+    group by env.id, ae.slug, ae.name, me.slug, me.name, se.name, ce.slug, ce.name, rte.slug, rte.name
     order by ce.name, ae.name`);
 }
 
@@ -752,6 +762,8 @@ export interface BenchmarkDTO {
   kind: string;
   metrics: { id: string; key: string; label: string; unit: string; higherIsBetter: boolean }[];
   resultCount: number;
+  /** Distinct runs. A throughput run records several metrics, so this, not `resultCount`, is how many measurements. */
+  runCount: number;
 }
 
 export async function listBenchmarks(db: Executor, kind?: 'capability' | 'performance'): Promise<BenchmarkDTO[]> {
@@ -759,7 +771,8 @@ export async function listBenchmarks(db: Executor, kind?: 'capability' | 'perfor
     select b.id, be.slug, be.name, be.summary, b.benchmark_kind as kind,
       (select jsonb_agg(jsonb_build_object('id', m.id, 'key', m.key, 'label', m.label, 'unit', m.unit, 'higherIsBetter', m.higher_is_better) order by m.key)
         from ecosystem.benchmark_metric m where m.benchmark_id = b.id) as metrics,
-      (select count(*)::int from ecosystem.benchmark_result r where r.benchmark_id = b.id) as "resultCount"
+      (select count(*)::int from ecosystem.benchmark_result r where r.benchmark_id = b.id) as "resultCount",
+      (select count(distinct r.run_id)::int from ecosystem.benchmark_result r where r.benchmark_id = b.id) as "runCount"
     from ecosystem.benchmark b join ecosystem.entity be on be.id = b.id
     ${kind ? sql`where b.benchmark_kind = ${kind}` : sql``}
     order by be.name`);

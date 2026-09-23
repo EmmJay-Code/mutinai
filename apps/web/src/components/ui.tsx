@@ -1,4 +1,4 @@
-import { GLOSSARY, summariseOrigin, type CompatResult, type GlossaryKey, type SpeedAssessment } from '@mutinai/domain';
+import { GLOSSARY, resultOrigins, summariseOrigin, type CompatResult, type GlossaryKey, type SpeedAssessment } from '@mutinai/domain';
 import Link from 'next/link';
 import { entityHref, formatDate, formatNumber, humanize } from '@/lib/format';
 import { EntityMark, entityTypeFor } from './viz';
@@ -11,7 +11,7 @@ export function PageHead({ eyebrow, title, lede, crumbs, children }: {
   children?: React.ReactNode;
 }) {
   return (
-    <div className="page-head">
+    <header className="page-head band no-strip">
       <div>
         {crumbs?.length ? <Crumbs crumbs={crumbs} /> : null}
         {eyebrow && <div className="eyebrow">{eyebrow}</div>}
@@ -19,7 +19,7 @@ export function PageHead({ eyebrow, title, lede, crumbs, children }: {
         {lede && <p className="lede">{lede}</p>}
       </div>
       {children && <div className="page-head-actions">{children}</div>}
-    </div>
+    </header>
   );
 }
 
@@ -74,17 +74,7 @@ export function EntitySection({ id, title, intro, more, children }: { id: string
   );
 }
 
-export function SectionNav({ items }: { items: { id: string; label: string }[] }) {
-  return (
-    <nav className="section-nav" aria-label="On this page">
-      <ol>
-        {items.map((i) => (
-          <li key={i.id}><a href={`#${i.id}`}>{i.label}</a></li>
-        ))}
-      </ol>
-    </nav>
-  );
-}
+export { SectionNav } from './section-nav';
 
 export function Glance({ items }: { items: [React.ReactNode, React.ReactNode, React.ReactNode?][] }) {
   return (
@@ -169,6 +159,11 @@ export function Basis({ kind, children, title }: { kind: 'measured' | 'estimated
   return <span className={`basis basis-${kind}`} title={title}>{children}</span>;
 }
 
+/** Who produced some benchmark results — the benchmark's maintainers, the developer, … — one badge per distinct origin. */
+export function OriginBasis({ origins }: { origins: Iterable<string> }) {
+  return <>{resultOrigins(origins).map((o, i) => <span key={o.origin}>{i > 0 && ' '}<Basis kind="source" title={o.detail}>{o.label}</Basis></span>)}</>;
+}
+
 /** Where an entity's facts come from: live sources, or illustrative fixtures only. Renders nothing without sources. */
 export function DataOrigin({ sources }: { sources: { kind: string; name: string; lastFetchedAt: Date | string | null }[] }) {
   const summary = summariseOrigin(sources);
@@ -192,9 +187,9 @@ export function Speed({ speed, unit = 'tok/s' }: { speed: SpeedAssessment; unit?
   }
   if (speed.basis === 'estimated') {
     return (
-      <span className="nowrap" title={`Estimated from memory bandwidth; likely ${speed.low}–${speed.high} ${unit}`}>
+      <span className="nowrap" title={`Estimated from memory bandwidth, not measured; likely ${speed.low}–${speed.high} ${unit}`}>
         <span className="val-estimated">~{formatNumber(speed.genTps, 0)}</span> <span className="small muted">{unit}</span>{' '}
-        <Basis kind="estimated">est.</Basis>
+        <Basis kind="estimated" title={`Estimated from memory bandwidth, not measured; likely ${speed.low}–${speed.high} ${unit}`}>estimate</Basis>
       </span>
     );
   }

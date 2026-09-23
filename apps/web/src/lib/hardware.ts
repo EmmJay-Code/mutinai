@@ -31,7 +31,7 @@ export function deviceSentence(d: catalog.DeviceDTO): string {
   const bw = d.memoryBandwidthGbps ? `${d.memoryBandwidthGbps.toLocaleString('en-US')} GB/s` : null;
   if (d.memoryKind === 'dedicated' && d.memoryGb) {
     const max = maxParamsAtQ4(d.memoryGb * compat.COMPAT_CONSTANTS.dedicatedUsableFraction);
-    return `${d.memoryGb} GB of ${d.memoryType ?? 'dedicated'} memory${bw ? ` at ${bw}` : ''} — enough for models up to ${roughParams(max)} parameters at 4-bit on one card.`;
+    return `${d.memoryGb} GB of ${d.memoryType ?? 'dedicated'} memory${bw ? ` at ${bw}` : ''} — by estimate, enough for models up to ${roughParams(max)} parameters at 4-bit on one card.`;
   }
   if (d.memoryKind === 'unified') {
     return `Shares one pool of ${d.memoryType ?? 'unified'} memory between CPU and GPU${bw ? ` at ${bw}` : ''}. What fits depends on how much memory the system has.`;
@@ -49,7 +49,7 @@ export function systemUsableGb(c: catalog.ConfigurationDTO): { gb: number; where
 export function systemSentence(c: catalog.ConfigurationDTO): string {
   const { gb, where } = systemUsableGb(c);
   const place = where === 'ram' ? 'in system RAM (CPU only)' : where === 'unified' ? 'in unified memory' : 'entirely on the GPU';
-  return `Runs models up to ${roughParams(maxParamsAtQ4(gb))} parameters at 4-bit ${place}.`;
+  return `By estimate, runs models up to ${roughParams(maxParamsAtQ4(gb))} parameters at 4-bit ${place}.`;
 }
 
 /** Price per GB of accelerator memory, when both are known. */

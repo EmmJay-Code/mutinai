@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Database, Executor } from '../client';
 import { createAccountWithProfile } from '../identity';
 import * as s from '../schema';
-import { ensureBenchmarkDefinitions, ensureQuantizationSchemes, ensureResultSources } from '../reference';
+import { ensureBenchmarkDefinitions, ensureEverydayHardware, ensureQuantizationSchemes, ensureResultSources } from '../reference';
 import { refreshSearchText } from '../search-text';
 import { createArtifact, createEntity, createRelation, createVariant, ensureEvaluationConfig, ensureSource, insertRun, linkExternalId } from '../writers';
 import * as catalog from './catalog';
@@ -221,6 +221,8 @@ export async function seedCatalog(db: Executor): Promise<Registry> {
     await db.insert(s.eventEntity).values(e.entities.map((x, i) => ({ eventId: row!.id, entityId: reg.get(x.kind, x.slug), role: i === 0 ? ('subject' as const) : ('related' as const) })));
   }
 
+  // Ordinary machines and the tools beginners are sent to by name; also added on every deploy (worker bootstrap).
+  await ensureEverydayHardware(db);
   await refreshSearchText(db);
   return reg;
 }

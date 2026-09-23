@@ -6,6 +6,8 @@ import { indexingAllowed, siteUrl } from '@/lib/site';
 import { signOut } from './actions';
 import './globals.css';
 
+const PREVIEW_NOTICE = 'Public preview · figures are illustrative fixture data, attributed to their source · data to May 2025 · read-only';
+
 export const generateMetadata = (): Metadata => ({
   metadataBase: siteUrl(),
   robots: indexingAllowed() ? undefined : { index: false, follow: false },
@@ -26,6 +28,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <span className="brand-mark" aria-hidden="true" />
               mutinai
             </Link>
+            <span className="preview-badge" title={PREVIEW_NOTICE}>Preview<span className="sr-only">: {PREVIEW_NOTICE}</span></span>
             <NavLinks />
             <div className="header-tools">
               <form className="header-search" action="/search" role="search">
@@ -48,9 +51,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </div>
           </div>
         </header>
-        <div className="data-notice" role="note">
-          <div className="wrap">Public preview · figures are illustrative fixture data, attributed to their source · data to May 2025 · read-only</div>
-        </div>
         <main id="main">
           <div className="wrap">{children}</div>
         </main>
@@ -66,6 +66,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <Link href="/about#provenance">Data provenance</Link>
               <Link href="/api/v1/models">API</Link>
             </nav>
+            <p className="notice" role="note">{PREVIEW_NOTICE}</p>
           </div>
         </footer>
       </body>

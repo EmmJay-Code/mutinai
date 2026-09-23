@@ -3,6 +3,7 @@ import { createTestDatabase, resetAndSeed } from '../src/testing';
 import * as catalog from '../src/queries/catalog';
 import * as compatQueries from '../src/queries/compat';
 import type { DatabaseHandle } from '../src/client';
+import { ensureEverydayHardware } from '../src/reference';
 
 let h: DatabaseHandle;
 
@@ -117,12 +118,23 @@ describe('directory support fields', () => {
 describe('model compatibility across reference systems', () => {
   it('summarises the best option per system', async () => {
     const rows = await compatQueries.compatForModelAcrossSystems(h.db, 'llama-3-3-70b', { contextLength: 8192 });
-    expect(rows).toHaveLength(13);
+    // 13 fixture reference systems plus the 6 everyday machines added by `ensureEverydayHardware`.
+    expect(rows).toHaveLength(19);
     const by = (slug: string) => rows.find((r) => r.system.slug === slug)!;
+    expect(by('macbook-air-m1-8gb').best).toBeNull();
     expect(['full', 'tight']).toContain(by('dual-rtx-3090').best?.result.fit);
     expect(by('a100-80gb-server').best?.result.fit).toBe('full');
     expect(by('rtx-4060-ti-16gb-budget').best?.result.fit).toBe('offload');
     expect(await compatQueries.compatForModelAcrossSystems(h.db, 'no-such-model', { contextLength: 8192 })).toEqual([]);
+  });
+
+  it('shows the measured speed where one exists, never a contradicting estimate', async () => {
+    const rows = await compatQueries.compatForModelAcrossSystems(h.db, 'qwen3-30b-a3b', { contextLength: 8192 });
+    const on4090 = rows.find((r) => r.system.slug === 'rtx-4090-workstation')!.best!;
+    expect(on4090.result.speed).toMatchObject({ basis: 'measured', genTps: 152 });
+    expect(on4090.runtime.slug).toBe('llama-cpp');
+    const onStrixHalo = rows.find((r) => r.system.slug === 'ryzen-ai-max-395-128gb')!.best!;
+    expect(onStrixHalo.result.speed).toMatchObject({ basis: 'measured', genTps: 51 });
   });
 });
 
@@ -156,10 +168,29 @@ describe('visual summaries', () => {
 
   it('summarises reference-system compatibility for every model in one pass', async () => {
     const summary = await compatQueries.compatSummaryByModel(h.db, { contextLength: 8192 });
-    expect(summary['llama-3-3-70b']).toMatchObject({ of: 13 });
+    expect(summary['llama-3-3-70b']).toMatchObject({ of: 19 });
     const detailed = await compatQueries.compatForModelAcrossSystems(h.db, 'llama-3-3-70b', { contextLength: 8192 });
     expect(summary['llama-3-3-70b']!.runsWell).toBe(detailed.filter((d) => d.best?.result.placement === 'accelerator').length);
     expect(summary['deepseek-r1-671b']!.runsWell).toBe(0);
     expect(Object.values(summary).every((s) => s.runsWell + s.slow + s.tooLarge === s.of)).toBe(true);
+  });
+});
+
+describe('everyday hardware', () => {
+  it('seeds ordinary machines and LM Studio, and adding them again on deploy changes nothing', async () => {
+    const configs = await catalog.listConfigurations(h.db);
+    expect(configs.map((c) => c.slug)).toEqual(expect.arrayContaining(['macbook-air-m1-8gb', 'macbook-air-m4-16gb', 'mac-mini-m4-16gb', 'windows-laptop-16gb']));
+    expect((await catalog.listProjects(h.db, { category: 'ui' })).map((p) => p.slug)).toContain('lm-studio');
+    expect(await ensureEverydayHardware(h.db)).toEqual({ created: [] });
+    const hits = await catalog.searchEntities(h.db, 'lm studio');
+    expect(hits).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'project', slug: 'lm-studio' })]));
+  });
+
+  it('runs a small model on a 16 GB laptop without a graphics card, on the processor', async () => {
+    const hw = (await compatQueries.loadReferenceHardware(h.db, 'windows-laptop-16gb'))!;
+    const results = await compatQueries.runCompatibility(h.db, hw, { contextLength: 8192 });
+    const llama8b = results.find((r) => r.variantSlug === 'llama-3-1-8b-instruct')!;
+    expect(llama8b.recommended?.result.placement).toBe('cpu');
+    expect(results.find((r) => r.modelSlug === 'llama-3-3-70b')?.recommended ?? null).toBeNull();
   });
 });

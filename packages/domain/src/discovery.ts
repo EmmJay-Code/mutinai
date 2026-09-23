@@ -28,19 +28,63 @@ export const OPENNESS_TEXT: Record<LicenseOpenness, { label: string; detail: str
   unknown: { label: 'License unknown', detail: 'Check the source before using it' },
 };
 
+/**
+ * The machine classes that group both directories. A model belongs to the first tier whose `maxGb` holds its memory
+ * need; a machine belongs to the largest tier it runs completely. Thresholds are usable, not nominal, memory: a 24 GB
+ * card keeps about 22.8 GB for a model, a 64 GB Mac about 48 GB. One scale, so "a 24 GB graphics card" means the same
+ * models on the Models page and the same machines on the Hardware page.
+ */
+export interface MemoryTier {
+  key: string;
+  /** Largest usable memory need, in GB, that belongs to this tier. */
+  maxGb: number;
+  /** The machine class, as a heading. */
+  label: string;
+  /** Short form for jump links. */
+  short: string;
+  /** Plain-English range of the tier. */
+  range: string;
+  /** Other machines in the same class. */
+  alsoRuns: string;
+  /** How a model in this tier is described next to its memory need. */
+  fits: string;
+}
+
+export const MEMORY_TIERS: readonly MemoryTier[] = [
+  { key: 'laptop', maxGb: 6, label: 'Most laptops', short: 'Laptops', range: 'up to 6 GB', alsoRuns: 'Runs on most laptops, even without a graphics card.', fits: 'fits most laptops' },
+  { key: 'gpu-16', maxGb: 15, label: 'A 16 GB graphics card', short: '16 GB card', range: '6–15 GB', alsoRuns: 'Or a Mac with 24 GB of memory.', fits: 'fits a 16 GB graphics card' },
+  { key: 'gpu-24', maxGb: 22, label: 'A 24 GB graphics card', short: '24 GB card', range: '15–22 GB', alsoRuns: 'Or a Mac with 32 GB of memory.', fits: 'fits a 24 GB graphics card' },
+  { key: 'gpu-32', maxGb: 30, label: 'A 32 GB graphics card', short: '32 GB card', range: '22–30 GB', alsoRuns: 'Or a Mac with 48 GB of memory.', fits: 'fits a 32 GB graphics card' },
+  { key: 'workstation', maxGb: 46, label: 'A 64 GB Mac or two graphics cards', short: 'Workstation', range: '30–46 GB', alsoRuns: 'Where 70B-class models start to fit.', fits: 'needs a 64 GB Mac or two graphics cards' },
+  { key: 'large', maxGb: 92, label: 'A 128 GB workstation', short: '128 GB', range: '46–92 GB', alsoRuns: 'Large unified-memory machines or several cards.', fits: 'needs a 128 GB workstation' },
+  { key: 'server', maxGb: Infinity, label: 'Server-class memory', short: 'Server', range: 'over 92 GB', alsoRuns: 'Datacenter accelerators and multi-GPU servers.', fits: 'needs server-class memory' },
+];
+
+/** The tier a model needing `gb` of memory belongs to. */
+export function modelMemoryTier(gb: number | null | undefined): MemoryTier | null {
+  if (gb == null) return null;
+  return MEMORY_TIERS.find((t) => gb <= t.maxGb)!;
+}
+
+/**
+ * The largest tier a machine with `usableGb` runs completely, or null when it cannot hold even the smallest tier.
+ * The last tier has no upper bound, so a machine reaches it once it holds everything the tier before it holds.
+ */
+export function hardwareMemoryTier(usableGb: number | null | undefined): MemoryTier | null {
+  if (usableGb == null) return null;
+  let reached: MemoryTier | null = null;
+  for (const [i, t] of MEMORY_TIERS.entries()) {
+    const ceiling = Number.isFinite(t.maxGb) ? t.maxGb : MEMORY_TIERS[i - 1]!.maxGb;
+    if (Number.isFinite(t.maxGb) ? usableGb >= ceiling : usableGb > ceiling) reached = t;
+  }
+  return reached;
+}
+
 /** "~18 GB to run" plus a familiar machine it fits. Thresholds use usable, not nominal, memory. */
 export function memoryPhrase(gb: number | null | undefined): { amount: string; fits: string } | null {
-  if (gb == null) return null;
-  const amount = `~${Math.ceil(gb)} GB to run`;
-  const fits =
-    gb <= 6 ? 'fits most laptops'
-      : gb <= 15 ? 'fits a 16 GB graphics card'
-        : gb <= 22 ? 'fits a 24 GB graphics card'
-          : gb <= 30 ? 'fits a 32 GB graphics card'
-            : gb <= 46 ? 'needs a 64 GB Mac or two graphics cards'
-              : gb <= 92 ? 'needs a 128 GB workstation'
-                : 'needs server-class memory';
-  return { amount, fits };
+  const tier = modelMemoryTier(gb);
+  if (gb == null || !tier) return null;
+  return { amount: `~${Math.ceil(gb)} GB to run`, fits: tier.fits };
 }
 
 export type ReachTone = 'good' | 'mixed' | 'limited';
@@ -172,6 +216,48 @@ export const MODEL_INTENTS: readonly ModelIntent[] = [
 
 export const modelIntent = (key: string | null | undefined) => MODEL_INTENTS.find((i) => i.key === key);
 
+// ─── Search by intent ────────────────────────────────────────────────────────
+
+export interface SearchIntent {
+  key: string;
+  /** Heading for the results block, in the reader's words. */
+  label: string;
+  explain: string;
+  /** A model intent that selects and orders the models, when one fits. */
+  modelIntent?: string;
+  /** Otherwise, models with this capability. */
+  capability?: string;
+  /** Leave out single-purpose specialists (a coding-only or maths-only model is not what "like ChatGPT" means). */
+  generalOnly?: boolean;
+  words: readonly string[];
+}
+
+/**
+ * What someone means when they search for a purpose rather than a name ("like chatgpt", "something for coding").
+ * Checked in order, most specific first, so "coding assistant" is about coding rather than chat.
+ */
+export const SEARCH_INTENTS: readonly SearchIntent[] = [
+  { key: 'coding', label: 'Models for coding', explain: 'Trained for code: writing, fixing and explaining it.', modelIntent: 'coding', words: ['code', 'coding', 'coder', 'programming', 'programmer', 'copilot', 'cursor', 'python', 'javascript', 'typescript'] },
+  { key: 'vision', label: 'Models that understand images', explain: 'Accept images and screenshots as well as text.', modelIntent: 'vision', words: ['image', 'images', 'photo', 'photos', 'picture', 'pictures', 'vision', 'screenshot', 'screenshots', 'multimodal'] },
+  { key: 'reasoning', label: 'Models for maths and reasoning', explain: 'Built to work through multi-step problems.', modelIntent: 'reasoning', words: ['math', 'maths', 'reasoning', 'logic', 'thinking', 'puzzle', 'puzzles'] },
+  { key: 'agents', label: 'Models that can use tools', explain: 'Support tool and function calling, for agents and automation.', modelIntent: 'agents', words: ['agent', 'agents', 'agentic', 'tool use', 'tool calling', 'function calling', 'automation'] },
+  { key: 'small', label: 'Small models for ordinary computers', explain: '10B parameters or fewer: they run on laptops and 8–16 GB machines.', modelIntent: 'small', words: ['small', 'tiny', 'lightweight', 'laptop', 'weak computer', 'old computer', 'low memory'] },
+  { key: 'chat', label: 'Chat models, like ChatGPT', explain: 'General models you talk to: they answer questions, write, summarise and explain — on your own computer.', capability: 'chat', generalOnly: true, words: ['chatgpt', 'chat gpt', 'gpt', 'claude', 'gemini', 'chatbot', 'chat bot', 'chat', 'assistant', 'conversation', 'talk to'] },
+];
+
+/** A model whose only specialism is code or maths: good at that, but not a general assistant. */
+export function isSpecialist(m: { capabilities: readonly string[] }): boolean {
+  const uses = m.capabilities.filter((c) => !['chat', 'multilingual', 'long_context'].includes(c));
+  return uses.length === 1 && (uses[0] === 'code' || uses[0] === 'reasoning');
+}
+
+/** The purpose a query expresses, if it expresses one. Whole words only: "gpt" matches "like gpt" but not "gpt2-medium". */
+export function searchIntent(query: string): SearchIntent | null {
+  const q = ` ${query.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+  if (q.trim() === '') return null;
+  return SEARCH_INTENTS.find((i) => i.words.some((w) => q.includes(` ${w} `))) ?? null;
+}
+
 // ─── Hardware organisation ───────────────────────────────────────────────────
 
 export type HardwareCategory = 'gpu' | 'unified' | 'systems' | 'server';
@@ -232,6 +318,97 @@ export function speedPhrase(bandwidthGbps: number | null | undefined): { text: s
   if (bandwidthGbps >= 400) return { text: 'Fast replies', tone: 'good' };
   if (bandwidthGbps >= 200) return { text: 'Moderate speed', tone: 'mixed' };
   return { text: 'Slow replies', tone: 'limited' };
+}
+
+// ─── First steps ─────────────────────────────────────────────────────────────
+
+/** Comfortable to use: comfortably faster than reading (five to six tokens a second). */
+const COMFORTABLE_TPS = 8;
+
+/**
+ * Generation speed in reading terms. People read roughly four words, or five to six tokens, a second, so speed is
+ * said against that first; the tok/s figure stays beside it for anyone who wants the number.
+ */
+export function readingSpeed(tokensPerSecond: number | null | undefined): { text: string; tone: ReachTone } | null {
+  if (tokensPerSecond == null || !Number.isFinite(tokensPerSecond) || tokensPerSecond <= 0) return null;
+  if (tokensPerSecond >= 25) return { text: 'Much faster than you can read', tone: 'good' };
+  if (tokensPerSecond >= COMFORTABLE_TPS) return { text: 'Types faster than you can read', tone: 'good' };
+  if (tokensPerSecond >= 5) return { text: 'About as fast as you read', tone: 'mixed' };
+  return { text: 'Slower than you read — expect to wait for answers', tone: 'limited' };
+}
+
+export interface StarterCandidate {
+  variantKind: string;
+  capabilities: readonly string[];
+  /** Where the recommended download runs: `accelerator`, `cpu`, `hybrid`, or null when it does not run. */
+  placement: string | null;
+  fit: string;
+  genTps: number | null;
+  /** Benchmark quality, e.g. `profileMean` of the model's capability profile (0 when unknown). */
+  quality: number;
+  paramsTotal: number;
+}
+
+/** Tuned for conversation, and not a specialist that would surprise someone asking an everyday question. */
+const GENERAL_KINDS = new Set(['instruct', 'vision']);
+/**
+ * The one model to suggest to someone who has never run one: a general chat model that runs entirely in memory
+ * (no offload), is comfortable to use, and has the best benchmark profile among those. Falls back to anything general
+ * that runs in memory when nothing is comfortably fast. Null when no general model runs.
+ */
+export function pickStarter<T extends StarterCandidate>(candidates: readonly T[]): T | null {
+  const general = candidates.filter(
+    (c) => GENERAL_KINDS.has(c.variantKind) && c.capabilities.includes('chat') && (c.placement === 'accelerator' || c.placement === 'cpu') && (c.fit === 'full' || c.fit === 'tight'),
+  );
+  if (!general.length) return null;
+  const comfortable = general.filter((c) => (c.genTps ?? 0) >= COMFORTABLE_TPS);
+  const pool = comfortable.length ? comfortable : general;
+  return [...pool].sort(
+    (a, b) =>
+      Number(b.fit === 'full') - Number(a.fit === 'full') ||
+      b.quality - a.quality ||
+      (b.genTps ?? 0) - (a.genTps ?? 0) ||
+      a.paramsTotal - b.paramsTotal,
+  )[0]!;
+}
+
+/** A first model should feel quick: below this, a beginner's first impression of local AI is waiting for it to type. */
+export const STARTER_MIN_TPS = 15;
+
+export interface DownloadOption {
+  bitsPerWeight: number;
+  fit: string;
+  placement: string | null;
+  genTps: number | null;
+  measured: boolean;
+}
+
+/**
+ * The download to suggest with the "start with this one" pick. Elsewhere the highest-precision file that fits is
+ * recommended; for a first run that can mean a file that types slowly. If the recommended file would run under
+ * STARTER_MIN_TPS, prefer the highest-precision alternative that stays in memory and reaches it (measured before
+ * estimated at equal precision). If none does, the recommendation stands.
+ */
+export function balanceStarterDownload<T extends DownloadOption>(recommended: T, alternatives: readonly T[]): { pick: T; swappedFrom: T | null } {
+  if ((recommended.genTps ?? 0) >= STARTER_MIN_TPS) return { pick: recommended, swappedFrom: null };
+  const quick = alternatives.filter(
+    (a) => (a.fit === 'full' || a.fit === 'tight') && (a.placement === 'accelerator' || a.placement === 'cpu') && (a.genTps ?? 0) >= STARTER_MIN_TPS,
+  );
+  if (!quick.length) return { pick: recommended, swappedFrom: null };
+  const pick = [...quick].sort(
+    (a, b) =>
+      Math.min(b.bitsPerWeight, 8.5) - Math.min(a.bitsPerWeight, 8.5) ||
+      Number(b.fit === 'full') - Number(a.fit === 'full') ||
+      Number(b.measured) - Number(a.measured) ||
+      (b.genTps ?? 0) - (a.genTps ?? 0),
+  )[0]!;
+  return { pick, swappedFrom: recommended };
+}
+
+/** "3×" or "1.6×": how many times faster one speed is than another, for a sentence. */
+export function speedupPhrase(faster: number, slower: number): string {
+  const x = faster / slower;
+  return x >= 1.95 ? `${Math.round(x)}×` : `${x.toFixed(1)}×`;
 }
 
 // ─── Hardware presentation ───────────────────────────────────────────────────

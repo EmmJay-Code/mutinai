@@ -9,6 +9,7 @@ export const PRIMARY_NAV = [
   { href: '/models', label: 'Models' },
   { href: '/hardware', label: 'Hardware' },
   { href: '/tools', label: 'Tools' },
+  { href: '/benchmarks', label: 'Benchmarks' },
   { href: '/learn', label: 'Learn' },
   { href: '/community', label: 'Community' },
 ];

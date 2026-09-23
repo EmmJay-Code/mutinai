@@ -294,8 +294,15 @@ function speedValue(s: SpeedAssessment): number {
   return 0;
 }
 
+/**
+ * A measurement outranks an estimate. Estimates are bandwidth arithmetic and can run well above what anyone has
+ * observed, so ranking by the number alone let an estimate for one runtime displace a measurement of the same file on
+ * the same system with another — and the page then showed a figure the measurement below it contradicted.
+ */
+const BASIS_RANK: Record<SpeedAssessment['basis'], number> = { measured: 2, estimated: 1, unknown: 0 };
+
 export function compareResults(a: CompatResult, b: CompatResult): number {
-  return FIT_RANK[b.fit] - FIT_RANK[a.fit] || speedValue(b.speed) - speedValue(a.speed);
+  return FIT_RANK[b.fit] - FIT_RANK[a.fit] || BASIS_RANK[b.speed.basis] - BASIS_RANK[a.speed.basis] || speedValue(b.speed) - speedValue(a.speed);
 }
 
 /** Evaluate an artifact against every runtime and return the best viable result first. */
@@ -321,8 +328,10 @@ export const QUALITY_BPW_CEILING = 8.5;
 
 /**
  * Chooses the artifact to recommend for one variant on one hardware configuration:
- * among artifacts that fit in accelerator (or CPU) memory, prefer higher effective precision, then roomier fit, then speed.
- * Only if nothing fits without offload, prefer the fastest offloaded option.
+ * among artifacts that fit in accelerator (or CPU) memory, prefer one that has been measured on this system, then
+ * higher effective precision, then roomier fit, then speed. Only if nothing fits without offload, prefer the fastest
+ * offloaded option, measured before estimated. A measured option wins over a higher-precision estimated one so that a
+ * page never recommends an estimate beside the measurement that contradicts it.
  */
 export function pickRecommended<T>(candidates: readonly Candidate<T>[]): Candidate<T> | null {
   const viable = candidates.filter((c) => c.result.fit !== 'none');
@@ -331,10 +340,11 @@ export function pickRecommended<T>(candidates: readonly Candidate<T>[]): Candida
   if (inMemory.length) {
     return [...inMemory].sort(
       (a, b) =>
+        BASIS_RANK[b.result.speed.basis] - BASIS_RANK[a.result.speed.basis] ||
         Math.min(b.bitsPerWeight, QUALITY_BPW_CEILING) - Math.min(a.bitsPerWeight, QUALITY_BPW_CEILING) ||
         FIT_RANK[b.result.fit] - FIT_RANK[a.result.fit] ||
         speedValue(b.result.speed) - speedValue(a.result.speed),
     )[0]!;
   }
-  return [...viable].sort((a, b) => speedValue(b.result.speed) - speedValue(a.result.speed) || b.bitsPerWeight - a.bitsPerWeight)[0]!;
+  return [...viable].sort((a, b) => BASIS_RANK[b.result.speed.basis] - BASIS_RANK[a.result.speed.basis] || speedValue(b.result.speed) - speedValue(a.result.speed) || b.bitsPerWeight - a.bitsPerWeight)[0]!;
 }

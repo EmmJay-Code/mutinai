@@ -153,6 +153,18 @@ describe('evaluateAcrossRuntimes', () => {
     expect(results[0]!.runtimeId).toBe('llama.cpp');
     expect(results.slice(1).every((r) => r.fit === 'none')).toBe(true);
   });
+
+  it('ranks a measured runtime above a faster estimate for the same file', () => {
+    // Qwen3 30B-A3B Q4_K_M on a 4090: the estimate for Ollama is far above what llama.cpp was measured at.
+    const art = gguf('q3moe-q4', qwen3moe, 4.89);
+    const ollama: RuntimeSpec = { ...llamaCpp, id: 'ollama', name: 'Ollama' };
+    const measurements = [{ hardwareConfigurationId: single4090.id, artifactId: art.id, runtimeId: 'llama.cpp', contextLength: 4096, genTps: 152, promptTps: 3400, origin: 'canonical' as const }];
+    const results = evaluateAcrossRuntimes(single4090, art, [ollama, llamaCpp], { contextLength: 8192, measurements });
+    const estimate = results.find((r) => r.runtimeId === 'ollama')!.speed;
+    expect(estimate.basis === 'estimated' && estimate.genTps).toBeGreaterThan(152);
+    expect(results[0]!.runtimeId).toBe('llama.cpp');
+    expect(results[0]!.speed).toMatchObject({ basis: 'measured', genTps: 152 });
+  });
 });
 
 describe('pickRecommended', () => {
@@ -176,6 +188,15 @@ describe('pickRecommended', () => {
     const pick = pickRecommended(candidates(single4090, arts))!;
     expect(pick.result.fit).toBe('offload');
     expect(pick.payload).toBe('q4');
+  });
+
+  it('prefers a download measured on this system over a higher-precision estimate', () => {
+    const arts = [gguf('q8', llama8b, 8.5), gguf('q4', llama8b, 4.89)];
+    const measurements = [{ hardwareConfigurationId: single4090.id, artifactId: 'q4', runtimeId: 'llama.cpp', contextLength: 4096, genTps: 128, promptTps: null, origin: 'canonical' as const }];
+    const measured = arts.map((a) => ({ payload: a.id, bitsPerWeight: a.bitsPerWeight, result: evaluateAcrossRuntimes(single4090, a, [llamaCpp], { contextLength: 4096, measurements })[0]! }));
+    const pick = pickRecommended(measured)!;
+    expect(pick.payload).toBe('q4');
+    expect(pick.result.speed.basis).toBe('measured');
   });
 
   it('returns null when nothing runs', () => {

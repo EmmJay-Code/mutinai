@@ -1,30 +1,58 @@
-import { catalog, getDb } from '@mutinai/db';
-import { CAPABILITY_AXES } from '@mutinai/domain';
+import { catalog, community, getDb } from '@mutinai/db';
+import { CAPABILITY_AXES, RESULT_ORIGIN_TEXT } from '@mutinai/domain';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Basis, Empty, Explain, PageHead } from '@/components/ui';
+import { Empty, Explain, OriginBasis, PageHead } from '@/components/ui';
 import { FrontierChart } from '@/components/viz';
-import { formatDate } from '@/lib/format';
+import { formatContext, formatDate, formatNumber } from '@/lib/format';
+import { measurementPolicy } from '@/lib/community-visibility';
 
 export const metadata: Metadata = { title: 'Benchmarks' };
+
+const GEN_KEYS = ['tg128', 'gen_tps'];
+const PROMPT_KEYS = ['pp512', 'prompt_tps'];
 
 const AXIS_OF: Record<string, string> = Object.fromEntries(CAPABILITY_AXES.flatMap((a) => a.benchmarks.map((b) => [b, a.label])));
 
 /**
  * The drill-down behind Discover's "How they compare": every benchmark Mutinai holds results for, what it measures,
- * and the best open result recorded for it. Scores are the developers' own reports — Mutinai does not run capability
- * evaluations — so the page says so next to every number rather than presenting a leaderboard as measurement.
+ * and the best open result recorded for it. Mutinai does not run capability evaluations: a score is either the
+ * developer's own report or a benchmark's maintainers running every model themselves (BFCL), and the page labels
+ * each benchmark with the origins its scores actually have rather than presenting a leaderboard as measurement.
  */
 export default async function BenchmarksPage() {
   const db = getDb();
-  const [benchmarks, best] = await Promise.all([catalog.listBenchmarks(db), catalog.listBenchmarkScores(db)]);
+  const includeMembers = measurementPolicy().includeCommunityMeasurements;
+  const [benchmarks, best, runs, submissions, models] = await Promise.all([
+    catalog.listBenchmarks(db),
+    catalog.listBenchmarkScores(db),
+    catalog.listAllPerformanceResults(db),
+    includeMembers ? community.listSubmissions(db, {}, undefined, 200) : Promise.resolve([]),
+    catalog.listModels(db),
+  ]);
+  // The table holds every measurement the rest of the site treats as measured: reference results, plus verified
+  // member runs on reference systems wherever the deployment counts those (the same policy as "What can I run?").
+  type SpeedRow = { key: string; modelSlug: string; modelName: string; scheme: string; system: { slug: string; name: string }; runtime: { slug: string; name: string }; detail: string; contextLength: number | null; gen: number | null; prompt: number | null; test: string; who: string };
+  const pick = (metrics: { key: string; value: number }[], keys: string[]) => metrics.find((m) => keys.includes(m.key))?.value ?? null;
+  const speedRows: SpeedRow[] = [
+    ...runs.map((r) => ({
+      key: r.environmentId, modelSlug: r.modelSlug, modelName: r.modelName, scheme: r.schemeName, system: r.configuration, runtime: r.runtime,
+      detail: [r.backend, r.runtimeVersion].filter(Boolean).join(' · '), contextLength: r.contextLength, gen: pick(r.metrics, GEN_KEYS), prompt: pick(r.metrics, PROMPT_KEYS),
+      test: r.benchmarkName, who: `${RESULT_ORIGIN_TEXT[r.origin]?.label ?? r.origin}${r.sourceName ? ` · ${r.sourceName}` : ''}`,
+    })),
+    ...submissions.flatMap((x) => (x.verification === 'verified' && x.hardware.type === 'reference' ? [{
+      key: x.id, modelSlug: x.artifact.modelSlug, modelName: models.find((m) => m.slug === x.artifact.modelSlug)?.name ?? x.artifact.variantName, scheme: x.artifact.schemeName,
+      system: { slug: x.hardware.slug, name: x.hardware.name }, runtime: x.runtime, detail: [x.environment.backend, x.environment.runtimeVersion].filter(Boolean).join(' · '),
+      contextLength: x.environment.contextLength, gen: pick(x.measurements, GEN_KEYS), prompt: pick(x.measurements, PROMPT_KEYS), test: x.benchmark.name, who: `verified member run · @${x.submitter.handle}`,
+    }] : [])),
+  ].sort((a, b) => a.modelName.localeCompare(b.modelName) || (b.gen ?? 0) - (a.gen ?? 0));
   const withResults = benchmarks.filter((b) => b.resultCount > 0);
   const frontiers = Object.fromEntries(
     (await Promise.all(withResults.filter((b) => b.kind === 'capability').map(async (b) => [b.slug, await catalog.benchmarkFrontier(db, b.slug)] as const))).filter(([, f]) => f),
   );
   const leadersOf = (slug: string) => best.filter((s) => s.benchmarkSlug === slug).sort((a, b) => b.value - a.value).slice(0, 5);
   const groups = [
-    { kind: 'capability', title: 'What models can do', intro: 'Fixed question sets a model answers. Every score here is reported by whoever published the model.' },
+    { kind: 'capability', title: 'What models can do', intro: 'Fixed question sets a model answers. Each score says who produced it: the model’s developer, or the benchmark’s own maintainers running every model the same way.' },
     { kind: 'performance', title: 'How fast they run', intro: 'Throughput measured on real hardware, by projects and by members. Speed depends on the machine, the runtime and the settings.' },
   ];
 
@@ -57,11 +85,12 @@ export default async function BenchmarksPage() {
                       <h3 className="name">{b.name}{AXIS_OF[b.slug] && <span className="small muted"> · counts towards {AXIS_OF[b.slug]}</span>}</h3>
                       {b.summary && <p className="small" style={{ margin: '2px 0 0', color: 'var(--ink-2)' }}>{b.summary}</p>}
                       <p className="small muted" style={{ margin: '4px 0 0' }}>
-                        {b.metrics.map((m) => `${m.label} (${m.unit}, ${m.higherIsBetter ? 'higher is better' : 'lower is better'})`).join(' · ')} · {b.resultCount} recorded result{b.resultCount === 1 ? '' : 's'}
+                        {b.metrics.map((m) => `${m.label} (${m.unit}, ${m.higherIsBetter ? 'higher is better' : 'lower is better'})`).join(' · ')} ·{' '}
+                        {group.kind === 'performance' ? `${b.runCount} measured run${b.runCount === 1 ? '' : 's'}` : `${b.resultCount} recorded result${b.resultCount === 1 ? '' : 's'}`}
                       </p>
-                      {group.kind === 'capability' && (
+                      {group.kind === 'capability' && leaders.length > 0 && (
                         <p className="small" style={{ margin: '6px 0 0' }}>
-                          <Basis kind="source" title="Reported by the model's developer, not measured by Mutinai">developer-reported</Basis>
+                          <OriginBasis origins={best.filter((s) => s.benchmarkSlug === b.slug).map((s) => s.origin)} />
                         </p>
                       )}
                     </div>
@@ -77,7 +106,7 @@ export default async function BenchmarksPage() {
                           ))}
                         </ol>
                       ) : (
-                        <p className="small muted">Results are recorded against hardware and runtimes; see the models and systems they were run on.</p>
+                        <p className="small muted">{b.runCount} run{b.runCount === 1 ? '' : 's'} — every one is in <a className="link" href="#speed-results">the table below</a>, by model, system and runtime.</p>
                       )}
                     </div>
                     {/* A step chart needs a few steps to say anything; with one or two results the list above already says it. */}
@@ -97,9 +126,39 @@ export default async function BenchmarksPage() {
           </section>
         );
       })}
+      {speedRows.length > 0 && (
+        <section className="section" id="speed-results" aria-labelledby="speed-results-h">
+          <div className="section-head">
+            <div>
+              <h2 id="speed-results-h">Measured speed, every run</h2>
+              <p>Tokens per second for one model download, on one system, with one runtime. Generation is how fast it writes; prompt processing is how fast it reads what you give it.</p>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table className="data speed-table">
+              <thead>
+                <tr><th>Model</th><th>System</th><th>Runtime</th><th className="r">Context</th><th className="r">Generation</th><th className="r">Prompt</th><th>Test · who measured</th></tr>
+              </thead>
+              <tbody>
+                {speedRows.map((r) => (
+                  <tr key={r.key}>
+                    <td><Link className="primary" href={`/models/${r.modelSlug}#performance`}>{r.modelName}</Link><span className="sub mono">{r.scheme}</span></td>
+                    <td><Link href={`/hardware/systems/${r.system.slug}`}>{r.system.name.replace(/\s*\(.*\)$/, '')}</Link></td>
+                    <td><Link href={`/tools/${r.runtime.slug}`}>{r.runtime.name}</Link><span className="sub mono">{r.detail}</span></td>
+                    <td className="r num">{r.contextLength ? formatContext(r.contextLength) : '—'}</td>
+                    <td className="r num">{r.gen != null ? <><span className="val-measured">{formatNumber(r.gen)}</span> <span className="small muted">tok/s</span></> : '—'}</td>
+                    <td className="r num">{r.prompt != null ? <>{formatNumber(r.prompt)} <span className="small muted">tok/s</span></> : '—'}</td>
+                    <td className="small">{r.test}<span className="sub">{r.who}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
       <p className="small muted" style={{ marginTop: 'var(--s5)' }}>
-        Developers report benchmark scores with their own prompts and settings, so numbers from different labs are not exactly
-        comparable. Use them to shortlist, then look at <Link className="link" href="/community">what members measured</Link> on hardware like yours.
+        Developer-reported scores use each lab’s own prompts and settings, so numbers from different labs are not exactly
+        comparable; a benchmark that runs every model itself uses one setup for all of them. Use them to shortlist, then look at <Link className="link" href="/community">what members measured</Link> on hardware like yours.
       </p>
     </>
   );

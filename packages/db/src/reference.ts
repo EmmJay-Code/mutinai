@@ -9,6 +9,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Executor } from './client';
 import * as s from './schema';
 import { schemes } from './seed/catalog';
+import { refreshSearchText } from './search-text';
 import { addAliases, createEntity, ensureEvaluationConfig, type EvaluationConfigInput } from './writers';
 
 export async function ensureQuantizationSchemes(db: Executor): Promise<{ ids: Map<string, string>; created: number }> {
@@ -315,4 +316,99 @@ export async function ensureBenchmarkDefinitions(db: Executor): Promise<{ ids: M
     ids.set(def.slug, id);
   }
   return { ids, created };
+}
+
+// ─── Everyday hardware ───────────────────────────────────────────────────────
+
+/**
+ * The machines most people already own, so "What can I run?" has a starting point for someone without a graphics
+ * card or a high-memory Mac. The fixture catalog's reference systems are enthusiast builds; these are ordinary ones.
+ * Specifications are the manufacturers' published figures (unified memory bandwidth from Apple's tech specs pages:
+ * M1 68.25 GB/s, M2 and M3 100 GB/s, M4 120 GB/s; DDR5-5600 dual channel for the laptop). macOS lets the GPU use about
+ * two thirds of unified memory on machines of 36 GB or less, hence the usable fraction.
+ *
+ * Idempotent: missing entries are created, existing ones are left exactly as they are (an editorial import may have
+ * refined them since).
+ */
+export const everydayDevices = [
+  { slug: 'apple-m1', name: 'Apple M1', vendor: 'apple', deviceKind: 'soc', memoryKind: 'unified', memoryType: 'LPDDR4X', memoryBandwidthGbps: 68.25, unifiedUsableFraction: 0.67, backends: ['metal', 'cpu'], releasedOn: '2020-11-17', summary: 'Apple’s first Mac chip; unified memory up to 16 GB.' },
+  { slug: 'apple-m2', name: 'Apple M2', vendor: 'apple', deviceKind: 'soc', memoryKind: 'unified', memoryType: 'LPDDR5', memoryBandwidthGbps: 100, unifiedUsableFraction: 0.67, backends: ['metal', 'cpu'], releasedOn: '2022-06-24', summary: 'Base M2 chip; unified memory up to 24 GB.' },
+  { slug: 'apple-m3', name: 'Apple M3', vendor: 'apple', deviceKind: 'soc', memoryKind: 'unified', memoryType: 'LPDDR5', memoryBandwidthGbps: 100, unifiedUsableFraction: 0.67, backends: ['metal', 'cpu'], releasedOn: '2023-11-07', summary: 'Base M3 chip; unified memory up to 24 GB.' },
+  { slug: 'apple-m4', name: 'Apple M4', vendor: 'apple', deviceKind: 'soc', memoryKind: 'unified', memoryType: 'LPDDR5X', memoryBandwidthGbps: 120, unifiedUsableFraction: 0.67, backends: ['metal', 'cpu'], releasedOn: '2024-11-08', summary: 'Base M4 chip; unified memory up to 32 GB.' },
+  { slug: 'intel-core-ultra-7-155h', name: 'Intel Core Ultra 7 155H', vendor: 'intel', deviceKind: 'cpu', memoryKind: 'none', memoryType: undefined, memoryBandwidthGbps: undefined, unifiedUsableFraction: undefined, backends: ['cpu'], releasedOn: '2023-12-14', summary: 'A common laptop processor (Meteor Lake) with integrated graphics only.' },
+] as const;
+
+export const everydayConfigurations = [
+  { slug: 'macbook-air-m1-8gb', name: 'MacBook Air M1 8 GB', formFactor: 'laptop', device: 'apple-m1', unifiedMemoryGb: 8, summary: 'The most common entry-level Mac laptop: 8 GB of unified memory.' },
+  { slug: 'macbook-air-m2-16gb', name: 'MacBook Air M2 16 GB', formFactor: 'laptop', device: 'apple-m2', unifiedMemoryGb: 16, summary: 'Everyday Mac laptop with 16 GB of unified memory.' },
+  { slug: 'macbook-air-m3-16gb', name: 'MacBook Air M3 16 GB', formFactor: 'laptop', device: 'apple-m3', unifiedMemoryGb: 16, summary: 'Everyday Mac laptop with 16 GB of unified memory.' },
+  { slug: 'macbook-air-m4-16gb', name: 'MacBook Air M4 16 GB', formFactor: 'laptop', device: 'apple-m4', unifiedMemoryGb: 16, summary: 'Current everyday Mac laptop; 16 GB is the base memory.' },
+  { slug: 'mac-mini-m4-16gb', name: 'Mac mini M4 16 GB', formFactor: 'mini_pc', device: 'apple-m4', unifiedMemoryGb: 16, summary: 'Entry Mac desktop with 16 GB of unified memory.' },
+  { slug: 'windows-laptop-16gb', name: 'Windows laptop 16 GB (no graphics card)', formFactor: 'laptop', device: 'intel-core-ultra-7-155h', systemRamGb: 16, systemRamBandwidthGbps: 89.6, summary: 'A typical recent laptop without a separate graphics card: models run on the processor and its 16 GB of RAM.' },
+] as const;
+
+const everydayOrganizations = [
+  { slug: 'apple', name: 'Apple', orgKind: 'hardware_vendor', websiteUrl: 'https://www.apple.com', country: 'US', summary: 'Apple silicon with unified memory; maintains MLX.' },
+  { slug: 'intel', name: 'Intel', orgKind: 'hardware_vendor', websiteUrl: 'https://www.intel.com', country: 'US', summary: 'CPU and GPU vendor.' },
+  { slug: 'lm-studio', name: 'LM Studio', orgKind: 'company', websiteUrl: 'https://lmstudio.ai', country: 'US', summary: 'Company behind the LM Studio desktop app.' },
+] as const;
+
+/** Tools a beginner is sent to by name, which the catalog must therefore hold. */
+export const everydayProjects = [
+  {
+    slug: 'lm-studio', name: 'LM Studio', category: 'ui', maintainer: 'lm-studio', homepageUrl: 'https://lmstudio.ai', repoUrl: 'https://github.com/lmstudio-ai/lms', language: 'TypeScript',
+    summary: 'Desktop app for finding, downloading and chatting with local models, with a built-in local server. Runs GGUF models through llama.cpp, and MLX models on Macs.',
+  },
+] as const;
+
+async function entityId(db: Executor, kind: (typeof s.entityKind.enumValues)[number], slug: string): Promise<string | undefined> {
+  const [row] = await db.select({ id: s.entity.id }).from(s.entity).where(and(eq(s.entity.kind, kind), eq(s.entity.slug, slug)));
+  return row?.id;
+}
+
+export async function ensureEverydayHardware(db: Executor): Promise<{ created: string[] }> {
+  const created: string[] = [];
+  const orgs = new Map<string, string>();
+  for (const o of everydayOrganizations) {
+    let id = await entityId(db, 'organization', o.slug);
+    if (!id) {
+      id = await createEntity(db, { kind: 'organization', slug: o.slug, name: o.name, summary: o.summary });
+      await db.insert(s.organization).values({ id, orgKind: o.orgKind, recognized: true, websiteUrl: o.websiteUrl, country: o.country });
+      created.push(id);
+    }
+    orgs.set(o.slug, id);
+  }
+  const devices = new Map<string, string>();
+  for (const d of everydayDevices) {
+    let id = await entityId(db, 'hardware_device', d.slug);
+    if (!id) {
+      id = await createEntity(db, { kind: 'hardware_device', slug: d.slug, name: d.name, summary: d.summary, aliases: [d.name.replace(/^(Apple|Intel)\s+/, '')] });
+      await db.insert(s.hardwareDevice).values({
+        id, vendorOrgId: orgs.get(d.vendor)!, deviceKind: d.deviceKind, memoryKind: d.memoryKind, memoryGb: null, memoryType: d.memoryType ?? null,
+        memoryBandwidthGbps: d.memoryBandwidthGbps ?? null, unifiedUsableFraction: d.unifiedUsableFraction ?? null, backends: [...d.backends], releasedOn: d.releasedOn,
+      });
+      created.push(id);
+    }
+    devices.set(d.slug, id);
+  }
+  for (const c of everydayConfigurations) {
+    if (await entityId(db, 'hardware_configuration', c.slug)) continue;
+    const id = await createEntity(db, { kind: 'hardware_configuration', slug: c.slug, name: c.name, summary: c.summary });
+    await db.insert(s.hardwareConfiguration).values({
+      id, formFactor: c.formFactor,
+      systemRamGb: 'systemRamGb' in c ? c.systemRamGb : 0,
+      systemRamBandwidthGbps: 'systemRamBandwidthGbps' in c ? c.systemRamBandwidthGbps : null,
+      unifiedMemoryGb: 'unifiedMemoryGb' in c ? c.unifiedMemoryGb : null,
+    });
+    await db.insert(s.hardwareConfigurationComponent).values({ configurationId: id, deviceId: devices.get(c.device)!, count: 1 });
+    created.push(id);
+  }
+  for (const p of everydayProjects) {
+    if (await entityId(db, 'project', p.slug)) continue;
+    const id = await createEntity(db, { kind: 'project', slug: p.slug, name: p.name, summary: p.summary, aliases: ['lmstudio'] });
+    await db.insert(s.project).values({ id, category: p.category, maintainerOrgId: orgs.get(p.maintainer)!, repoUrl: p.repoUrl, homepageUrl: p.homepageUrl, primaryLanguage: p.language });
+    created.push(id);
+  }
+  if (created.length) await refreshSearchText(db, created);
+  return { created };
 }

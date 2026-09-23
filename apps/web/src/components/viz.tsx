@@ -112,11 +112,19 @@ const MEM_MIN = 2, MEM_MAX = 8; // log2 GB range: 4–256 GB
 export const memPos = (gb: number) => Math.max(0, Math.min(1, (Math.log2(Math.max(gb, 1)) - MEM_MIN) / (MEM_MAX - MEM_MIN)));
 
 /** Memory requirement on a log scale with familiar reference points; optional capacity marker. */
+/**
+ * Marks a figure as the compatibility engine's estimate rather than something measured or published. Same look as the
+ * `estimate` badge on speeds (ui.tsx `Basis`), inlined here because viz is imported by ui.
+ */
+export function EstimateTag({ title = 'Estimated by Mutinai from file size, quantization and context — not measured' }: { title?: string }) {
+  return <span className="basis basis-estimated" title={title}>estimate</span>;
+}
+
 export function MemoryScale({ gb, capacityGb, label = 'Memory', showValue = true, ticks = [8, 24, 96], exact = false }: { gb: number | null; capacityGb?: number; label?: string; showValue?: boolean; ticks?: number[]; exact?: boolean }) {
   if (gb == null) return <span className="faint">—</span>;
   return (
     <div className="memscale" role="img" aria-label={`${label}: about ${Math.ceil(gb)} GB${capacityGb ? ` of ${Math.round(capacityGb)} GB` : ''}`}>
-      {showValue && <div className="top"><span className="muted">{label}</span><span className="value">{exact ? `${gb} GB` : `~${Math.ceil(gb)} GB`}</span></div>}
+      {showValue && <div className="top"><span className="muted">{label}</span><span className="value">{exact ? `${gb} GB` : <>~{Math.ceil(gb)} GB <EstimateTag /></>}</span></div>}
       <div className="track">
         <div className="fill" style={{ width: `${memPos(gb) * 100}%` }} />
         {[8, 16, 24, 48, 96, 192].map((t) => <span key={t} className="tick" style={{ left: `${memPos(t) * 100}%` }} />)}
@@ -148,6 +156,9 @@ export function Heat({ level, max = 3, label }: { level: number; max?: number; l
 }
 
 /** Step chart of the best known open result over time. */
+/** Scores are shown to one decimal: a value computed from subtasks (e.g. BFCL's roll-up) carries float noise otherwise. */
+const score = (v: number) => v.toFixed(1);
+
 export function FrontierChart({ points, width = 312, height = 118, unit = '%' }: { points: { date: string; value: number; name: string }[]; width?: number; height?: number; unit?: string }) {
   if (points.length < 2) return null;
   const t = (d: string) => new Date(`${d.slice(0, 10)}T00:00:00Z`).getTime();
@@ -160,13 +171,13 @@ export function FrontierChart({ points, width = 312, height = 118, unit = '%' }:
   const last = points[points.length - 1]!;
   const fmt = (d: string) => new Date(`${d.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' });
   return (
-    <svg className="frontier" width="100%" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Best open result rose from ${points[0]!.value}${unit} to ${last.value}${unit} (${last.name})`}>
+    <svg className="frontier" width="100%" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Best open result rose from ${score(points[0]!.value)}${unit} to ${score(last.value)}${unit} (${last.name})`}>
       {[vmin, vmax].map((v) => (
         <g key={v}><line x1={pad.l} x2={width - pad.r} y1={y(v)} y2={y(v)} stroke="var(--line)" /><text x={pad.l - 4} y={y(v) + 3} textAnchor="end">{v}</text></g>
       ))}
       <path d={`${path} H${width - pad.r}`} fill="none" stroke="var(--e-bench)" strokeWidth="2" />
-      {points.map((p) => <circle key={p.date + p.name} cx={x(p.date)} cy={y(p.value)} r="3" fill="var(--e-bench)"><title>{`${p.name}: ${p.value}${unit}`}</title></circle>)}
-      <text className="label" x={x(last.date) - 6} y={y(last.value) - 6} textAnchor="end">{last.name} · {last.value}</text>
+      {points.map((p) => <circle key={p.date + p.name} cx={x(p.date)} cy={y(p.value)} r="3" fill="var(--e-bench)"><title>{`${p.name}: ${score(p.value)}${unit}`}</title></circle>)}
+      <text className="label" x={x(last.date) - 6} y={y(last.value) - 6} textAnchor="end">{last.name} · {score(last.value)}</text>
       <text x={pad.l} y={height - 3}>{fmt(points[0]!.date)}</text>
       <text x={width - pad.r} y={height - 3} textAnchor="end">{fmt(last.date)}</text>
     </svg>
@@ -180,7 +191,7 @@ export function ParamsReach({ maxB, label = 'Runs up to' }: { maxB: number; labe
   const rough = maxB < 1 ? 'under 1B' : maxB >= 100 ? `~${Math.round(maxB / 10) * 10}B` : `~${Math.floor(maxB)}B`;
   return (
     <div className="memscale" role="img" aria-label={`${label} about ${rough} parameters at 4-bit`}>
-      <div className="top"><span className="muted">{label}</span><span className="value">{rough}</span></div>
+      <div className="top"><span className="muted">{label}</span><span className="value">{rough} <EstimateTag title="Estimated from usable memory at 4-bit with room for an 8K conversation — not measured" /></span></div>
       <div className="track">
         <div className="fill" style={{ width: `${paramPos(maxB) * 100}%`, background: 'var(--e-model)' }} />
         {[8, 32, 70, 405].map((t) => <span key={t} className="tick" style={{ left: `${paramPos(t) * 100}%` }} />)}

@@ -38,3 +38,24 @@ export function summariseOrigin(sources: { kind: string; name: string; lastFetch
   const times = chosen.map((s) => (s.lastFetchedAt ? new Date(s.lastFetchedAt).getTime() : NaN)).filter(Number.isFinite);
   return { origin, names: [...new Set(chosen.map((s) => sourceKindLabel(s.kind)))], lastFetchedAt: times.length ? new Date(Math.max(...times)) : null };
 }
+
+/**
+ * Who produced a benchmark result (the `result_origin` column), in readers' words. A score run by a benchmark's own
+ * maintainers is not the developer's claim about their model, so the two are never labelled alike.
+ */
+export const RESULT_ORIGIN_TEXT: Record<string, { label: string; detail: string }> = {
+  benchmark_operator: { label: 'run by the benchmark', detail: "The benchmark's own maintainers ran every model themselves, with the same setup for each" },
+  third_party: { label: 'independent evaluation', detail: 'Run by an independent evaluator, not the model developer' },
+  submitted_registry: { label: 'submitted to the benchmark', detail: 'Produced by whoever submitted it; the benchmark publishes submissions without re-running them' },
+  editorial: { label: 'editorial', detail: 'Recorded by Mutinai editors' },
+  developer_reported: { label: 'developer-reported', detail: "Reported by the model's developer with their own prompts and settings, not measured by Mutinai" },
+};
+
+const ORIGIN_ORDER = ['benchmark_operator', 'third_party', 'submitted_registry', 'editorial', 'developer_reported'];
+
+/** The distinct origins among some results, most independent first. Unknown values pass through humanised. */
+export function resultOrigins(origins: Iterable<string>): { origin: string; label: string; detail: string }[] {
+  return [...new Set(origins)]
+    .sort((a, b) => (ORIGIN_ORDER.indexOf(a) + 1 || 99) - (ORIGIN_ORDER.indexOf(b) + 1 || 99))
+    .map((origin) => ({ origin, ...(RESULT_ORIGIN_TEXT[origin] ?? { label: origin.replace(/_/g, ' '), detail: origin.replace(/_/g, ' ') }) }));
+}

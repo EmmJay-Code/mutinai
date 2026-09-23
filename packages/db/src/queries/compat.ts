@@ -134,6 +134,8 @@ export interface CompatArtifactRow {
   format: string;
   bitsPerWeight: number;
   sizeBytes: number | null;
+  /** Hugging Face repository the download comes from, when known. */
+  sourceRepo: string | null;
   publisherName: string;
   variantId: string;
   variantSlug: string;
@@ -164,7 +166,7 @@ export interface MeasurementOptions {
 export async function loadCompatCatalog(db: Executor, opts: MeasurementOptions = {}) {
   const artifacts = await rows<CompatArtifactRow>(db, sql`
     select a.id as "artifactId", ae.slug as "artifactSlug", se.name as "schemeName", a.format, q.bits_per_weight as "bitsPerWeight",
-      a.size_bytes::float8 as "sizeBytes", pe.name as "publisherName", v.id as "variantId", ve.slug as "variantSlug", ve.name as "variantName",
+      a.size_bytes::float8 as "sizeBytes", a.source_repo as "sourceRepo", pe.name as "publisherName", v.id as "variantId", ve.slug as "variantSlug", ve.name as "variantName",
       v.variant_kind as "variantKind", v.capabilities::text[] as capabilities, l.commercial_use as "commercialUse", l.name as "licenseName",
       me.slug as "modelSlug", me.name as "modelName", fe.name as "familyName", oe.name as "developerName", m.architecture,
       m.params_total::float8 as "paramsTotal", m.params_active::float8 as "paramsActive", m.layers, m.kv_heads as "kvHeads", m.head_dim as "headDim",

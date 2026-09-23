@@ -14,4 +14,4 @@ export { refreshSearchText } from './search-text';
 export { loadEnrichmentFacts, runEnrichment, type EnrichmentOutcome, type EnrichmentSubjectRef } from './enrichment';
 export { visibleTo, publicAggregateEligible } from './visibility';
 export { seedDatabase, FIXTURE_SOURCE_KEY } from './seed';
-export { ensureBenchmarkDefinitions, ensureQuantizationSchemes, ensureResultSources } from './reference';
+export { ensureBenchmarkDefinitions, ensureEverydayHardware, ensureQuantizationSchemes, ensureResultSources } from './reference';

@@ -2,6 +2,7 @@ import { catalog, getDb } from '@mutinai/db';
 import { licenseOpenness, OPENNESS_TEXT, type LicenseOpenness } from '@mutinai/domain';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { EdSection, Masthead, StartStrip } from '@/components/editorial';
 import { Explain } from '@/components/ui';
 import { LinearBar } from '@/components/viz';
 import { formatBytes, formatDate, formatParams, humanize, VARIANT_KIND_EXPLAINER } from '@/lib/format';
@@ -52,8 +53,8 @@ const PATHS = [
     lede: 'The names look chaotic, but they encode a simple structure.',
     body: [
       'Read a name from the outside in and it comes apart into five levels. Anyone can add to the lower ones: a quantization, a fine-tune or a distill is often published by someone other than the lab that trained the model, which is exactly what open weights make possible.',
-      'Benchmarks give a rough sense of capability, but developers report them with different prompts and settings. Use them to shortlist, then look at community results and reviews from people doing what you want to do.',
-      'Mutinai labels every number with where it came from: developer-reported, measured by the community, or estimated.',
+      'Benchmarks give a rough sense of capability. Most scores are reported by the model’s developer with their own prompts and settings; a few benchmarks run every model themselves with one setup. Use them to shortlist, then look at community results and reviews from people doing what you want to do.',
+      'Mutinai labels every number with where it came from: developer-reported, run by the benchmark itself, measured by the community, or estimated.',
     ],
     next: [
       { href: '/models/qwen2-5-32b', label: 'Explore a model with several variants' },
@@ -94,38 +95,30 @@ export default async function LearnPage() {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <div className="eyebrow">Learn</div>
-          <h1>Open models, explained as you go.</h1>
-          <p className="lede">Four short paths — just enough to make sense of what you’re looking at, then straight to the real data. Every figure below is counted from the catalog, so you can click any of it to see where it came from.</p>
-        </div>
-      </div>
-      <ol className="paths" aria-label="Guides">
-        {PATHS.map((p) => (
-          <li key={p.id}><a href={`#${p.id}`}><strong>{p.title}</strong><span>{p.lede}</span></a></li>
-        ))}
-      </ol>
-      {PATHS.map((p, i) => (
-        <section key={p.id} id={p.id} className="entity-section" aria-labelledby={`${p.id}-h`} style={{ borderTop: '1px solid var(--line-strong)', paddingTop: 16, marginTop: 28 }}>
+      <Masthead
+        eyebrow="Learn"
+        title="Open models, explained as you go."
+        lede="Four short paths: just enough to make sense of what you’re looking at, then straight to the real data. Every figure is counted from the catalog, so you can click any of it to see where it came from."
+      >
+        <StartStrip label="Four paths" items={PATHS.map((p, i) => ({ href: `#${p.id}`, tag: `Path ${i + 1}`, name: p.title, why: p.lede }))} />
+      </Masthead>
+      {PATHS.map((p) => (
+        <EdSection key={p.id} id={p.id} title={p.title} intro={p.lede}>
           <div className="split-wide">
             <div className="prose">
-              <div className="step">Path 0{i + 1}</div>
-              <h2 id={`${p.id}-h`} style={{ font: '600 26px/1.15 var(--serif)', letterSpacing: '-0.02em' }}>{p.title}</h2>
-              <p className="lede" style={{ margin: '4px 0 12px' }}>{p.lede}</p>
               {figures[p.id]}
               {p.body.map((para, j) => <p key={j}>{para}</p>)}
             </div>
             <aside>
               <div className="surface">
-              <div className="subhead" style={{ marginTop: 0 }}>Go deeper</div>
-              <ul className="list-plain">
-                {p.next.map((n) => <li key={n.href}><Link href={n.href}>{n.label} →</Link></li>)}
-              </ul>
+                <div className="subhead" style={{ marginTop: 0 }}>Go deeper</div>
+                <ul className="list-plain">
+                  {p.next.map((n) => <li key={n.href}><Link href={n.href}>{n.label} →</Link></li>)}
+                </ul>
               </div>
             </aside>
           </div>
-        </section>
+        </EdSection>
       ))}
     </>
   );
